@@ -206,6 +206,7 @@ export async function tx(fn) {
 }
 export const dbKind = 'Firebase Cloud Firestore';
 export async function init() {
-  await firestore.listCollections();
+  // Do not call Firestore during process startup. A quota outage must not stop
+  // Render from serving the static app or restarting the API process.
   console.log(`  Firestore project: ${projectId || app.options.projectId || 'application-default'}`);
 }

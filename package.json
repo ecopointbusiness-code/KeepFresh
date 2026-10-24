@@ -1,0 +1,13 @@
+{
+  "name": "keepfresh",
+  "private": true,
+  "scripts": {
+    "setup": "npm install --prefix client && npm install --prefix server",
+    "build": "npm run build --prefix client",
+    "start": "node server/src/index.js",
+    "dev:server": "node --watch server/src/index.js",
+    "dev:client": "npm run dev --prefix client",
+    "test": "node --no-warnings server/test/api.test.js",
+    "test:email": "node server/send-test-email.js"
+  }
+}

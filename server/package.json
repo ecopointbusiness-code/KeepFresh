@@ -1,0 +1,22 @@
+{
+  "name": "keepfresh-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/api.test.js"
+  },
+  "optionalDependencies": {
+    "web-push": "^3.6.7"
+  },
+  "dependencies": {
+    "alasql": "^4.21.0",
+    "firebase-admin": "^14.5.0",
+    "pg": "^8.12.0"
+  }
+}

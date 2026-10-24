@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KeepFresh</string>
+    <string name="title_activity_main">KeepFresh</string>
+    <string name="package_name">ph.edu.eac.keepfresh</string>
+    <string name="custom_url_scheme">ph.edu.eac.keepfresh</string>
+</resources>

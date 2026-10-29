@@ -88,9 +88,9 @@ ol li,ul li{margin:5px 0}@media print{body{background:#fff}.wrap{padding:0}h2{br
 #define SPI_FREQUENCY       27000000
 #define SMOOTH_FONT</pre>
 <ol start="4"><li>Open <code>firmware/keepfresh_esp32/keepfresh_esp32.ino</code> and fill in <code>WIFI_SSID</code>, <code>WIFI_PASS</code>, <code>SERVER</code> and <code>DEVICE_KEY</code>.</li>
-<li>Admin portal &rarr; <b>Devices &rarr; Register device</b>: copy the API key into <code>DEVICE_KEY</code> and give the device code to the customer.</li>
+<li>Admin portal &rarr; <b>Devices &rarr; Register device</b>: copy the API key into firmware <code>DEVICE_KEY</code>. Use the separate device code (for example <code>KF-1A2B3C</code>) in the signed-in app under Profile &rarr; Indicator Unit. The API key is not the code you enter in the app.</li>
 <li>Plug in USB, press <b>Upload</b>. If it hangs at &ldquo;Connecting...&rdquo;, hold the <b>BOOT</b> button on the ESP32 until upload starts.</li></ol>
-<div class="card warn"><b>SERVER must be reachable from the ESP32.</b> On a home network use your PC&rsquo;s Wi-Fi address with the port (for example <code>http://192.168.1.5:3000</code>). The sketch uses HTTPS, so for plain <code>http://</code> testing change <code>WiFiClientSecure</code> to <code>WiFiClient</code> in <code>poll()</code>, or deploy the server behind HTTPS.</div>
+<div class="card warn"><b>The production SERVER is prefilled</b> as <code>https://keepfresh-njtq.onrender.com</code>. For a local server, use your computer&rsquo;s Wi-Fi address and port (for example <code>http://192.168.1.5:3000</code>). The sketch uses HTTPS for production; local plain HTTP needs a <code>WiFiClient</code> in <code>poll()</code>.</div>
 
 <h2>5. Testing, step by step</h2>
 <ol><li>Power on. The screen shows <i>Connecting to Wi-Fi...</i> then the KeepFresh status.</li>
@@ -114,6 +114,6 @@ ol li,ul li{margin:5px 0}@media print{body{background:#fff}.wrap{padding:0}h2{br
 <tr><td>A light never turns on</td><td>Swap that signal wire to another GPIO and update <code>PIN_G/PIN_Y/PIN_R</code>; confirm GND is shared</td></tr>
 <tr><td>Buzzer silent or weak</td><td>Active (not passive) buzzer? Use the transistor circuit for bare buzzers</td></tr>
 <tr><td>Upload fails</td><td>Hold BOOT while uploading; try another USB cable (some are charge-only)</td></tr>
-<tr><td>Unit shows offline in admin</td><td>Wi-Fi name and password, <code>SERVER</code> address, <code>DEVICE_KEY</code> typed exactly; the unit checks in every 30 seconds</td></tr></table>
+<tr><td>Unit shows offline in admin</td><td>Check Wi-Fi (2.4 GHz), production <code>SERVER</code>, and firmware API key. Open Serial Monitor at 115200 baud: HTTP 401 means the API key is wrong; negative HTTP codes indicate a network/TLS problem. The device checks in every 5 seconds and is shown offline after 5 minutes without a check-in.</td></tr></table>
 <p class="sub" style="margin-top:28px;text-align:center">Keeping freshness alive.</p>
 </div></body></html>

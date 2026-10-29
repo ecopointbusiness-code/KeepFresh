@@ -25,10 +25,10 @@
 // ---- EDIT THESE ----
 const char* WIFI_SSID  = "YOUR_WIFI";
 const char* WIFI_PASS  = "YOUR_PASSWORD";
-const char* SERVER     = "https://your-keepfresh-domain.com";   // no trailing slash. http://192.168.x.x:3000 also works
+const char* SERVER     = "https://keepfresh-njtq.onrender.com"; // production API origin; no trailing slash
 const char* DEVICE_KEY = "PASTE_API_KEY_FROM_ADMIN_PORTAL";
 const long  GMT_OFFSET = 8 * 3600;                              // Philippines (UTC+8)
-const unsigned long POLL_MS = 60000;
+const unsigned long POLL_MS = 5000; // Poll often so new warnings appear within a few seconds.
 // --------------------
 
 const int PIN_G = 25, PIN_Y = 26, PIN_R = 27, PIN_BUZ = 33, PIN_MUTE = 0;
@@ -36,7 +36,8 @@ const unsigned long MUTE_MS = 3600000UL, REPEAT_ALARM_MS = 1800000UL;
 
 #define C565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
 const uint16_t BG = C565(22, 30, 3), PANEL = C565(40, 54, 8), CREAM = C565(248, 244, 240), OLIVE = C565(148, 168, 78), DKGRN = C565(49, 68, 1),
-               BROWN = C565(166, 108, 65), RED = C565(199, 26, 23), ORANGE = C565(238, 113, 33), GOLD = C565(212, 167, 53), GREEN = C565(95, 130, 28), MUTED = C565(165, 170, 135);
+               BROWN = C565(166, 108, 65), RED = C565(199, 26, 23), ORANGE = C565(238, 113, 33), GOLD = C565(242, 195, 62), GREEN = C565(95, 130, 28), MUTED = C565(165, 170, 135),
+               ICE = C565(190, 232, 242), ICE2 = C565(153, 214, 231), BLUE = C565(63, 151, 190), DEEPBLUE = C565(38, 105, 145);
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -63,7 +64,7 @@ void text(int x, int y, int size, uint16_t color, const String& s, uint16_t bg =
 void textRight(int xRight, int y, int size, uint16_t color, const String& s, uint16_t bg = BG) { tft.setTextSize(size); int w = tft.textWidth(s); text(xRight - w, y, size, color, s, bg); }
 void textCenter(int cx, int y, int size, uint16_t color, const String& s, uint16_t bg = BG) { tft.setTextSize(size); int w = tft.textWidth(s); text(cx - w / 2, y, size, color, s, bg); }
 String clip(String s, int maxChars) { if ((int)s.length() <= maxChars) return s; return s.substring(0, maxChars - 1) + "."; }
-uint16_t levelColor(const String& l) { return l == "Critical" ? RED : l == "Warning" ? ORANGE : GOLD; }
+uint16_t levelColor(const String& l) { return l == "Critical" ? RED : GOLD; }
 
 String daysText(int d) { if (d < 0) return "EXPIRED " + String(-d) + "d"; if (d == 0) return "TODAY"; if (d == 1) return "TOMORROW"; return String(d) + " DAYS"; }
 
@@ -74,15 +75,14 @@ void drawWifi(int xRight, int y) {
 }
 
 void drawHeader() {
-  tft.fillRect(0, 0, tft.width(), 32, DKGRN);
-  text(10, 8, 2, CREAM, "KEEP", DKGRN); text(10 + 54, 8, 2, OLIVE, "FRESH", DKGRN);
-  tft.fillRect(0, 32, tft.width(), 2, BROWN);
-  if (household.length()) textCenter(tft.width() / 2 + 20, 11, 1, MUTED, clip(household, 22), DKGRN);
+  tft.fillRect(0, 0, tft.width(), 36, DKGRN);
+  text(10, 9, 2, CREAM, "KeepFresh", DKGRN);
+  tft.fillRect(0, 36, tft.width(), 2, BROWN);
   struct tm t; String clk = "";
   if (getLocalTime(&t, 5)) { int h = t.tm_hour % 12; if (h == 0) h = 12; char b[12]; snprintf(b, sizeof b, "%d:%02d %s", h, t.tm_min, t.tm_hour < 12 ? "AM" : "PM"); clk = b; }
-  drawWifi(tft.width() - 10, 8);
-  if (clk.length()) textRight(tft.width() - 48, 8, 2, CREAM, clk, DKGRN);
-  if (muted) { tft.fillRoundRect(150, 6, 44, 18, 4, ORANGE); text(155, 10, 1, BG, "MUTED", ORANGE); }
+  drawWifi(tft.width() - 10, 9);
+  if (clk.length()) textRight(tft.width() - 48, 9, 2, CREAM, clk, DKGRN);
+  if (muted) { tft.fillRoundRect(145, 8, 44, 18, 4, ORANGE); text(150, 12, 1, BG, "MUTED", ORANGE); }
   lastHeaderMs = millis();
 }
 
@@ -92,22 +92,33 @@ void drawIdleHome(bool force = false) {
     tft.fillScreen(BG); drawHeader();
     tft.fillRoundRect(14, 48, tft.width() - 28, 62, 12, PANEL);
     textCenter(cx, 58, 2, OLIVE, "YOUR FRIDGE", PANEL);
-    textCenter(cx, 84, 2, CREAM, "ALL CLEAR", PANEL);
+    textCenter(cx, 84, 2, CREAM, "ALL FRESH!", PANEL);
     textCenter(cx, 119, 1, MUTED, nTotal ? String(nTotal) + " foods staying fresh" : "Your fridge is ready", BG);
     tft.fillRoundRect(42, 267, tft.width() - 84, 34, 9, PANEL);
     textCenter(cx, 277, 1, MUTED, serverOk ? "Warnings will appear here" : "Offline - showing last status", PANEL);
   }
-  // Redraw only the illustration area for a soft, low-flicker idle animation.
+  // Redraw only the mascot area for a soft, low-flicker blink/bob animation.
   tft.fillRect(cx - 105, 137, 210, 122, BG);
-  int bounce = (homeFrame % 2) ? 4 : 0;
-  tft.fillRoundRect(cx - 65, 190 + bounce, 130, 55, 8, BROWN);
-  tft.drawRoundRect(cx - 65, 190 + bounce, 130, 55, 8, GOLD);
-  for (int y = 203; y <= 233; y += 15) tft.drawLine(cx - 58, y + bounce, cx + 58, y + bounce, GOLD);
-  tft.fillCircle(cx - 34, 179 - bounce, 18, GREEN);
-  tft.fillCircle(cx, 169 + bounce, 22, ORANGE);
-  tft.fillCircle(cx + 35, 180 - bounce, 17, RED);
+  int bounce = (homeFrame % 2) ? 2 : 0;
+  int x = cx - 48, y = 140 + bounce;
+  tft.fillRoundRect(x, y, 96, 112, 12, ICE);
+  tft.drawRoundRect(x, y, 96, 112, 12, CREAM);
+  tft.fillRoundRect(x + 7, y + 7, 82, 43, 7, ICE2);
+  tft.fillRoundRect(x + 7, y + 56, 82, 48, 7, ICE2);
+  tft.drawLine(x + 7, y + 53, x + 89, y + 53, CREAM);
+  tft.fillRoundRect(x + 76, y + 17, 5, 20, 2, DEEPBLUE);
+  tft.fillRoundRect(x + 76, y + 68, 5, 22, 2, DEEPBLUE);
+  bool blink = (homeFrame % 5) == 0;
+  if (blink) {
+    tft.drawLine(x + 25, y + 27, x + 35, y + 27, DEEPBLUE);
+    tft.drawLine(x + 51, y + 27, x + 61, y + 27, DEEPBLUE);
+  } else {
+    tft.fillCircle(x + 30, y + 27, 4, DEEPBLUE);
+    tft.fillCircle(x + 56, y + 27, 4, DEEPBLUE);
+  }
+  tft.drawLine(x + 39, y + 38, x + 47, y + 38, BLUE);
   int sparkleX = cx - 82 + ((homeFrame * 23) % 165), sparkleY = 156 + ((homeFrame * 13) % 27);
-  tft.fillCircle(sparkleX, sparkleY, 4, CREAM);
+  tft.fillCircle(sparkleX, sparkleY, 3, CREAM);
   homeFrame++;
 }
 
@@ -119,7 +130,7 @@ void drawWarningScreen() {
   tft.fillScreen(CREAM);
   tft.fillRoundRect(8, 8, tft.width() - 16, tft.height() - 16, 16, PANEL);
   tft.fillRoundRect(8, 8, tft.width() - 16, 52, 16, col);
-  String title = r.level == "Critical" ? "FOOD EXPIRED" : r.level == "Warning" ? "USE THIS TODAY" : "USE THIS SOON";
+  String title = r.level == "Critical" ? "DISCARD NOW" : r.level == "Warning" ? "USE TODAY" : "USE SOON";
   textCenter(tft.width() / 2, 23, 2, CREAM, title, col);
   tft.fillCircle(tft.width() / 2, 104, 31, col);
   textCenter(tft.width() / 2, 81, 4, CREAM, "!", col);
@@ -167,18 +178,24 @@ void drawUnlinked() {
 
 void splash(const String& line) {
   tft.fillScreen(BG);
-  textCenter(tft.width() / 2, 100, 4, CREAM, "KEEP", BG); textCenter(tft.width() / 2, 140, 4, OLIVE, "FRESH", BG);
-  textCenter(tft.width() / 2, 190, 1, BROWN, "KEEPING FRESHNESS ALIVE", BG);
-  textCenter(tft.width() / 2, 230, 2, MUTED, line, BG);
+  textCenter(tft.width() / 2, 92, 3, CREAM, "KeepFresh", BG);
+  textCenter(tft.width() / 2, 142, 1, BROWN, "KEEPING FRESHNESS ALIVE", BG);
+  textCenter(tft.width() / 2, 220, 1, MUTED, line, BG);
 }
 
 // ---------- network ----------
 void connectWifi() {
   WiFi.mode(WIFI_STA); WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("Connecting to Wi-Fi: %s\n", WIFI_SSID);
   splash("Connecting to Wi-Fi...");
   for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
-  if (WiFi.status() == WL_CONNECTED) configTime(GMT_OFFSET, 0, "pool.ntp.org", "time.google.com");
-  else splash("Wi-Fi failed. Retrying...");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Wi-Fi connected. IP: "); Serial.println(WiFi.localIP());
+    configTime(GMT_OFFSET, 0, "pool.ntp.org", "time.google.com");
+  } else {
+    Serial.printf("Wi-Fi connection failed (status %d). Check SSID/password and 2.4 GHz coverage.\n", WiFi.status());
+    splash("Wi-Fi failed. Check settings.");
+  }
 }
 
 void applyStatus(JsonDocument& doc) {
@@ -198,14 +215,24 @@ void poll() {
   secure.setInsecure();   // for production, pin your server certificate with secure.setCACert(...)
   String url = String(SERVER) + "/api/device/status";
   bool began = url.startsWith("https://") ? http.begin(secure, url) : http.begin(plain, url);
-  if (!began) { serverOk = false; return; }
+  if (!began) { serverOk = false; Serial.println("HTTP begin failed. Check SERVER URL."); return; }
   http.setTimeout(8000); http.addHeader("x-device-key", DEVICE_KEY);
   int code = http.GET();
-  if (code != 200) { http.end(); serverOk = false; if (!haveData) splash("Server error " + String(code)); return; }
+  if (code != 200) {
+    String body = http.getString();
+    Serial.printf("Device check-in failed: HTTP %d; %s\n", code, body.c_str());
+    if (code < 0) Serial.printf("Network detail: %s\n", http.errorToString(code).c_str());
+    http.end(); serverOk = false;
+    if (!haveData) {
+      if (code == 401) splash("API key rejected");
+      else splash("HTTP error " + String(code));
+    }
+    return;
+  }
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, http.getString());
   http.end();
-  if (err) { serverOk = false; return; }
+  if (err) { serverOk = false; Serial.printf("Bad device status JSON: %s\n", err.c_str()); return; }
 
   bool cameBack = !serverOk;
   serverOk = true; haveData = true; lastOkMs = millis();
@@ -215,6 +242,7 @@ void poll() {
   if (cmd == "buzz") beep(3);
 
   applyStatus(doc);
+  Serial.printf("Device online: linked=%s, attention=%d, household=%s\n", linked ? "yes" : "no", nAttention, household.c_str());
   leds(led == "green", led == "yellow", led == "red");
   String sig;
   for (int i = 0; i < nRows; i++) sig += rows[i].name + ":" + rows[i].level + ":" + String(rows[i].days) + ";";
@@ -229,8 +257,15 @@ void poll() {
   } else if (!wasWarning) {
     warningSignature = sig; startAlertWindow();
   } else if (sig != warningSignature) {
+    String previousSignature = warningSignature;
     warningSignature = sig;
+    bool addedWarning = false;
+    for (int i = 0; i < nRows; i++) {
+      String token = rows[i].name + ":" + rows[i].level + ":" + String(rows[i].days) + ";";
+      if (previousSignature.indexOf(token) < 0) { addedWarning = true; break; }
+    }
     if (alertVisible) { alertPage = 0; drawWarningScreen(); }
+    else if (addedWarning) startAlertWindow();
   }
   serviceWarningDisplay();
 }
@@ -252,6 +287,8 @@ void checkButton() {
 }
 
 void setup() {
+  Serial.begin(115200); delay(100);
+  Serial.println("KeepFresh indicator starting. Check Serial Monitor at 115200 baud.");
   pinMode(PIN_G, OUTPUT); pinMode(PIN_Y, OUTPUT); pinMode(PIN_R, OUTPUT); pinMode(PIN_BUZ, OUTPUT); pinMode(PIN_MUTE, INPUT_PULLUP);
   leds(0, 0, 0);
   tft.init(); tft.setRotation(1); tft.fillScreen(BG);
@@ -264,6 +301,6 @@ void loop() {
   checkButton();
   if (millis() - lastPoll > POLL_MS) { lastPoll = millis(); poll(); }
   serviceWarningDisplay();
-  if (haveData && linked && !warningActive && millis() - lastHeaderMs > 30000UL) drawIdleHome(true);
+  if (haveData && linked && !warningActive && millis() - lastHeaderMs > 5000UL) drawHeader();
   delay(40);
 }

@@ -41,12 +41,25 @@ function AppContent() {
     if (!token) return;
     setError('');
     try {
-      const [me, items, al, catalog, recipes, grocery] = await Promise.all([request('/me'), request('/items'), request('/alerts'), request('/catalog'), request('/recipes'), request('/grocery')]);
-      setData({ me, items, alerts:al.alerts || [], unread:al.unread || 0, catalog, recipes, grocery });
+      const [me, items, al, catalog, recipes, grocery, household] = await Promise.all([request('/me'), request('/items'), request('/alerts'), request('/catalog'), request('/recipes'), request('/grocery'), request('/household')]);
+      setData({ me, items, alerts:al.alerts || [], unread:al.unread || 0, catalog, recipes, grocery, devices:household.devices || [] });
     } catch (e) { setError(e.message); }
   }, [token, request]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize API data with the authenticated session.
   useEffect(() => { if (token) refresh(); else setData(null); }, [token, refresh]);
+  useEffect(() => {
+    if (!token || tab !== 'Profile') return;
+    let active = true;
+    const pollDevices = async () => {
+      try {
+        const household = await request('/household');
+        if (active) setData(current => current ? { ...current, devices: household.devices || [] } : current);
+      } catch {}
+    };
+    pollDevices();
+    const timer = setInterval(pollDevices, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [token, tab, request]);
   const registerPush = useCallback(async () => {
     if (Platform.OS === 'web' || !token || !data?.me?.settings?.push_on || pushRegistered) return;
     try {
@@ -131,16 +144,23 @@ function AppContent() {
     <Section title="Suggestions that fit your fridge" subtitle={`${data.recipes.length} ideas`}/>
     {data.recipes.length ? data.recipes.map((r)=><RecipeRow key={r.id} recipe={r} onPress={()=>setRecipe(r)}/>) : <Empty text="Add fresh food, then tap Suggest recipes."/>}
   </>;
-  const renderGroceries = () => <>
-    <Section title="Grocery list" subtitle={`${data.grocery.list.filter(x=>x.done).length} of ${data.grocery.list.length} checked`}/>
-    <View style={s.inline}><Input style={{flex:1}} value={groceryName} onChangeText={setGroceryName} placeholder="Add an item"/><Button style={{marginTop:0}} title="Add" onPress={()=>run(async()=>{await request('/grocery','POST',{name:groceryName});setGroceryName('');await refresh();})} disabled={!groceryName.trim()}/></View>
-    {data.grocery.list.map((g)=><View key={g.id} style={s.groceryRow}><Pressable onPress={()=>run(async()=>{await request(`/grocery/${g.id}`,'PATCH',{done:!g.done});await refresh();})} style={[s.check,g.done&&s.checked]}><Text style={{color:C.white,fontWeight:'900'}}>{g.done?'✓':''}</Text></Pressable><View style={{flex:1}}><Text style={[s.cardTitle,g.done&&{textDecorationLine:'line-through',color:C.muted}]}>{g.name}</Text><Text style={s.muted}>{g.qty} {g.why ? `· ${g.why}` : ''}</Text></View><Pressable onPress={()=>run(async()=>{await request(`/grocery/${g.id}`,'DELETE');await refresh();})}><Text style={s.remove}>×</Text></Pressable></View>)}
-    {data.grocery.suggestions?.length>0&&<Card><Text style={s.cardTitle}>Suggested for you</Text>{data.grocery.suggestions.slice(0,8).map((g)=><Text key={g.name} style={s.body}>• {g.name} — {g.why}</Text>)}<Button title="Add suggested items" tone="light" onPress={()=>run(async()=>{await request('/grocery/add-suggested','POST',{});await refresh();},'Added suggestions to your list.')}/></Card>}
-    {!!data.grocery.list.some(x=>x.done)&&<Button title="Move checked items to fridge" onPress={()=>run(async()=>{await request('/grocery/move-bought','POST',{});await refresh();},'Moved purchased items into your fridge.')}/>}
-    {!!data.grocery.list.length&&<Button title="Clear checked items" tone="light" onPress={()=>run(async()=>{await request('/grocery/clear-checked','POST',{});await refresh();})}/>}
-  </>;
+  const groceryRows = (items) => items.map((g)=><View key={g.id} style={s.groceryRow}><Pressable onPress={()=>run(async()=>{await request(`/grocery/${g.id}`,'PATCH',{done:!g.done});await refresh();})} style={[s.check,g.done&&s.checked]}><Text style={{color:C.white,fontWeight:'900'}}>{g.done?'✓':''}</Text></Pressable><View style={{flex:1}}><Text style={[s.cardTitle,g.done&&{textDecorationLine:'line-through',color:C.muted}]}>{g.name}</Text><Text style={s.muted}>{g.qty} {g.why ? `· ${g.why}` : ''}</Text></View><Pressable onPress={()=>run(async()=>{await request(`/grocery/${g.id}`,'DELETE');await refresh();})}><Text style={s.remove}>×</Text></Pressable></View>);
+  const renderGroceries = () => {
+    const shopping = data.grocery.list.filter((g)=>!g.done), cart = data.grocery.list.filter((g)=>g.done);
+    return <>
+      <Section title="Grocery list" subtitle={`${shopping.length} to buy · ${cart.length} in Cart List`}/>
+      <View style={s.inline}><Input style={{flex:1}} value={groceryName} onChangeText={setGroceryName} placeholder="Add an item"/><Button style={{marginTop:0}} title="Add" onPress={()=>run(async()=>{await request('/grocery','POST',{name:groceryName});setGroceryName('');await refresh();})} disabled={!groceryName.trim()}/></View>
+      <Section title="Shopping List"/>
+      {shopping.length ? groceryRows(shopping) : <Empty text="Nothing left to buy. Check suggestions below to add groceries."/>}
+      <Section title="Cart List" subtitle={`${cart.length} checked`}/>
+      {cart.length ? groceryRows(cart) : <Empty text="Checked groceries will appear here."/>}
+      {cart.length>0&&<Button title={`Grocery done · move ${cart.length} to refrigerator`} onPress={()=>run(async()=>{await request('/grocery/move-bought','POST',{});await refresh();},`Grocery done. ${cart.length} item${cart.length===1?'':'s'} moved to your refrigerator.`)}/>}
+      {data.grocery.suggestions?.length>0&&<Card><Text style={s.cardTitle}>Suggested for you</Text>{data.grocery.suggestions.slice(0,8).map((g)=><Text key={g.name} style={s.body}>• {g.name} — {g.why}</Text>)}<Button title="Add suggested items" tone="light" onPress={()=>run(async()=>{await request('/grocery/add-suggested','POST',{});await refresh();},'Added suggestions to your list.')}/></Card>}
+    </>;
+  };
   const renderProfile = () => <>
     <Card><Text style={s.cardTitle}>{data.me.user.name}</Text><Text style={s.body}>{data.me.user.email}</Text><Text style={s.muted}>Household: {data.me.household.name}</Text><Text style={s.muted}>Invite code: {data.me.household.inviteCode}</Text></Card>
+    <Card><Text style={s.cardTitle}>Indicator Unit</Text>{data.devices?.length ? data.devices.map(d=><View key={d.id} style={s.setting}><View style={{flex:1}}><Text style={s.body}>{d.code}</Text><Text style={s.muted}>Last check-in: {d.last_seen ? new Date(d.last_seen).toLocaleTimeString() : 'never'}</Text></View><Text style={{fontWeight:'900',color:d.online?C.green2:C.orange}}>{d.online?'Online':'Offline'}</Text></View>) : <Text style={s.muted}>No device linked to this household yet.</Text>}</Card>
     <Card><Text style={s.cardTitle}>Freshness alerts</Text><Setting label="Email notifications" value={!!data.me.settings.email_on} onChange={(v)=>saveSettings({email_on:v})}/><Setting label="Phone push notifications" value={!!data.me.settings.push_on} onChange={(v)=>{if(v){setPushRegistered(false);saveSettings({push_on:true});}else saveSettings({push_on:false});}}/><Text style={s.muted}>Email: {data.me.emailEnabled?'configured':'not configured'} · Phone push: {pushRegistered?'enabled':data.me.pushEnabled?'waiting for device permission':'server not configured'}</Text></Card>
     <Card><Text style={s.cardTitle}>KeepFresh connections</Text><Text style={s.body}>Expiry estimates: {data.me.aiEnabled?'AI enabled':'household history and reference'}</Text><Text style={s.body}>Recipe ideas: fridge-matched, with offline suggestions available</Text></Card>
     <Button title="Log out" tone="light" onPress={logout}/>

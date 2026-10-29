@@ -95,22 +95,31 @@ function RecipeList({ d, open, load }) {
     {d.recipes.map((r) => { const m = r.ingredients.filter((g) => !g.have).map((g) => g.key); return <div className="row" key={r.id}><div className="pic" style={{ background: r.color }}>{r.emoji}</div><div className="m"><h3>{r.name} {r.aiGenerated ? <small className="hint">AI suggestion</small> : <small className="hint">Fridge match</small>}</h3><p>{r.ready} of {r.total} ingredients ready · ⏱ {r.time}</p><p className={m.length ? 'buy' : 'have'}>{m.length ? 'Also needed: ' + m.slice(0, 3).join(', ') + (m.length > 3 ? '…' : '') : 'Ready to cook'}</p></div><button className="add" onClick={() => open({ type: 'recipe', id: r.id })}>View</button></div>; })}</> : <div className="card empty">No recipe suggestions yet. Add fresh ingredients, then get recipe ideas that use food already in your refrigerator as the main ingredient.</div>}</>;
 }
 function Grocery({ d, load }) {
-  const [n, setN] = useState(''), [qty, setQty] = useState(''), { list, suggestions } = d.grocery, done = list.filter((g) => g.done).length;
+  const [n, setN] = useState(''), [qty, setQty] = useState(''), { list, suggestions } = d.grocery;
+  const shopping = list.filter((g) => !g.done), cart = list.filter((g) => g.done);
   const call = (fn, msg) => guard(async () => { await fn(); await load(); msg && toast(msg); });
   const add = (e) => { e.preventDefault(); call(() => api.post('/grocery', { name: n, qty }), null).then(() => { setN(''); setQty(''); }); };
   const share = async () => { const t = 'KeepFresh grocery list\n' + list.map((g) => `${g.done ? '[x]' : '[ ]'} ${g.qty ? g.qty + ' ' : ''}${g.name}`).join('\n'); try { if (navigator.share) await navigator.share({ text: t }); else { await navigator.clipboard.writeText(t); toast('List copied. Paste it into a message.'); } } catch { /* cancelled */ } };
-  return <><div className="card"><div className="gh"><div><h3 style={{ margin: 0 }}>This week’s list</h3><span className="hint">{done} of {list.length} in the basket</span></div><button className="add" onClick={share}>Share</button></div>
-    <div className="bar"><i style={{ width: `${list.length ? (done / list.length) * 100 : 0}%` }} /></div>
+  const renderRows = (items, emptyText) => items.length ? AISLES.map((a, ai) => { const rows = items.filter((g) => (AISLE[g.category] ?? 4) === ai); return rows.length ? <div key={a}><div className="ai">{a}</div>{rows.map((g) => <div className={`chk${g.done ? ' done' : ''}`} key={g.id}><input type="checkbox" checked={g.done} aria-label={g.name} onChange={(e) => call(() => api.patch(`/grocery/${g.id}`, { done: e.target.checked }))} /><span>{g.name}{g.qty && <small className="hint"> {g.qty}</small>}<small className="hint" style={{ display: 'block' }}>{g.why}</small></span><button className="x" aria-label="Remove" onClick={() => call(() => api.del(`/grocery/${g.id}`))}>×</button></div>)}</div> : null; }) : <div className="empty">{emptyText}</div>;
+  return <><div className="card"><div className="gh"><div><h3 style={{ margin: 0 }}>Grocery list</h3><span className="hint">{shopping.length} to buy · {cart.length} in Cart List</span></div><button className="add" onClick={share}>Share</button></div>
+    <div className="bar"><i style={{ width: `${list.length ? (cart.length / list.length) * 100 : 0}%` }} /></div>
     <form className="gf" onSubmit={add}><input required placeholder="Add an item, e.g. Rice" aria-label="Item name" value={n} onChange={(e) => setN(e.target.value)} /><input placeholder="Qty" aria-label="Quantity" value={qty} onChange={(e) => setQty(e.target.value)} /><button className="add">Add</button></form>
-    {list.length ? AISLES.map((a, ai) => { const rows = list.filter((g) => (AISLE[g.category] ?? 4) === ai); return rows.length ? <div key={a}><div className="ai">{a}</div>{rows.map((g) => <div className={`chk${g.done ? ' done' : ''}`} key={g.id}><input type="checkbox" checked={g.done} aria-label={g.name} onChange={(e) => call(() => api.patch(`/grocery/${g.id}`, { done: e.target.checked }))} /><span>{g.name}{g.qty && <small className="hint"> {g.qty}</small>}<small className="hint" style={{ display: 'block' }}>{g.why}</small></span><button className="x" aria-label="Remove" onClick={() => call(() => api.del(`/grocery/${g.id}`))}>×</button></div>)}</div> : null; }) : <div className="empty">Your list is empty. Add suggestions below or type an item.</div>}
-    {done > 0 && <><button className="go" onClick={() => call(() => api.post('/grocery/move-bought'), 'Bought items moved to your refrigerator.')}>Move {done} bought item{done > 1 ? 's' : ''} to refrigerator</button><button className="go alt" onClick={() => call(() => api.post('/grocery/clear-checked'))}>Clear checked</button></>}</div>
+    <h3>Shopping List</h3>{renderRows(shopping, 'Nothing left to buy. Check suggestions below to add groceries.')}
+    <h3>Cart List</h3>{renderRows(cart, 'Checked groceries will appear here.')}
+    {cart.length > 0 && <button className="go" onClick={() => call(() => api.post('/grocery/move-bought'), `Grocery done. ${cart.length} item${cart.length === 1 ? '' : 's'} moved to your refrigerator.`)}>Grocery done · move {cart.length} to refrigerator</button>}</div>
     <div className="card"><h3 style={{ margin: '0 0 8px' }}>Suggested for you</h3>{suggestions.length ? <><div className="pills">{suggestions.map((s) => <button key={s.name} onClick={() => call(() => api.post('/grocery', s))}>+ {s.name}</button>)}</div><button className="add" style={{ marginTop: 12 }} onClick={() => call(() => api.post('/grocery/add-suggested'), 'Added to your list.')}>Add all</button></> : <span className="hint">Nothing more to suggest.</span>}</div></>;
 }
 
 const b64 = (s) => { const p = '='.repeat((4 - (s.length % 4)) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
 export function Profile(p) {
   const { d, load, onLogout } = p, s = d.me.settings, [code, setCode] = useState(''), [err, setErr] = useState(''), [devs, setDevs] = useState(null);
-  useEffect(() => { api.get('/household').then((h) => setDevs(h.devices)).catch(() => setDevs([])); }, []);
+  useEffect(() => {
+    let live = true;
+    const refreshDevices = () => api.get('/household').then((h) => { if (live) setDevs(h.devices); }).catch(() => { if (live) setDevs([]); });
+    refreshDevices();
+    const timer = setInterval(refreshDevices, 10000);
+    return () => { live = false; clearInterval(timer); };
+  }, []);
   const save = (patch) => guard(async () => { await api.put('/settings', patch); await load(); });
   const Step = ({ k, min, max }) => <div className="step"><button onClick={() => save({ [k]: Math.max(min, s[k] - 1) })}>−</button><b>{s[k]}</b><button onClick={() => save({ [k]: Math.min(max, s[k] + 1) })}>+</button></div>;
   const push = () => guard(async () => {
@@ -129,7 +138,7 @@ export function Profile(p) {
       <div className="set"><span>Orange warning<br /><small className="hint">days before expiry</small></span><Step k="warn_days" min={0} max={7} /></div>
       <div className="set"><span>Email alerts{!m.emailEnabled && <small className="hint" style={{ display: 'block' }}>Server email is not configured</small>}</span><button className={`sw${s.email_on ? ' on' : ''}`} aria-label="Email alerts" onClick={() => save({ email_on: !s.email_on })} /></div>
       <div className="set"><span>Push notifications<br /><small className="hint">Warnings on this phone</small></span><button className="add" onClick={push}>Turn on</button></div></div>
-    <div className="card"><h3 style={{ margin: '0 0 6px' }}>Indicator Unit</h3>{devs?.length ? devs.map((v) => <div className="set" key={v.id}><span>{v.code}<br /><small className="hint">firmware {v.fw}</small></span><Badge color={v.online ? 'green' : 'yellow'} flow>{v.online ? 'Online' : 'Offline'}</Badge></div>) : <p className="hint">No device linked yet.</p>}
+    <div className="card"><h3 style={{ margin: '0 0 6px' }}>Indicator Unit</h3>{devs?.length ? devs.map((v) => <div className="set" key={v.id}><span>{v.code}<br /><small className="hint">firmware {v.fw} · last check-in: {v.last_seen ? timeText(v.last_seen) : 'never'}</small></span><Badge color={v.online ? 'green' : 'yellow'} flow>{v.online ? 'Online' : 'Offline'}</Badge></div>) : <p className="hint">No device linked yet.</p>}
       <Err msg={err} /><form className="gf" onSubmit={link}><input required placeholder="Device code, e.g. KF-1A2B3C" aria-label="Device code" value={code} onChange={(e) => setCode(e.target.value)} /><button className="add">Link</button></form></div>
     <button className="go alt" onClick={onLogout}>Log out</button></>;
 }

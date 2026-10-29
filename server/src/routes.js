@@ -168,6 +168,8 @@ route('PATCH', '/api/items/:id', 'user', async (c) => {
 });
 async function removeItem(it, outcome) {
   await run('INSERT INTO consumption_logs (household_id,category,days,outcome) VALUES (?,?,?,?)', it.household_id, it.category, Math.max(1, daysBetween(it.bought, iso(today()))), outcome);
+  await run('DELETE FROM alerts WHERE item_id=? AND household_id=?', it.id, it.household_id);
+  await run('DELETE FROM alert_state WHERE item_id=?', it.id);
   await run('DELETE FROM items WHERE id=?', it.id);
 }
 route('DELETE', '/api/items/:id', 'user', async (c) => tx(async () => {
@@ -191,6 +193,13 @@ route('GET', '/api/alerts', 'user', async (c) => {
   const todayKey = iso(today()), rows = await all('SELECT * FROM alerts WHERE user_id=? ORDER BY id DESC LIMIT 50', c.user.id);
   const alerts = [];
   for (const a of rows) {
+    if (a.item_id != null) {
+      const item = await get('SELECT id FROM items WHERE id=? AND household_id=?', a.item_id, hid(c));
+      if (!item) {
+        await run('DELETE FROM alerts WHERE item_id=? AND household_id=?', a.item_id, hid(c));
+        continue;
+      }
+    }
     const state = a.item_id == null ? null : await get('SELECT level FROM alert_state WHERE user_id=? AND item_id=?', c.user.id, a.item_id);
     if (new RegExp(`^dismissed:${todayKey}:`, 'i').test(state?.level || '')) continue;
     alerts.push({ ...a, color: COLOR[a.level] });

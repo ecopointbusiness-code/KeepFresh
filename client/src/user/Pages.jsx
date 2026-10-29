@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { Logo, Badge, CE, emoji, tile, whenText, guard, toast, Err, Sheet } from '../common.jsx';
 
@@ -112,14 +112,14 @@ function Grocery({ d, load }) {
 
 const b64 = (s) => { const p = '='.repeat((4 - (s.length % 4)) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
 export function Profile(p) {
-  const { d, load, onLogout } = p, s = d.me.settings, [code, setCode] = useState(''), [err, setErr] = useState(''), [devs, setDevs] = useState(null);
-  useEffect(() => {
-    let live = true;
-    const refreshDevices = () => api.get('/household').then((h) => { if (live) setDevs(h.devices); }).catch(() => { if (live) setDevs([]); });
-    refreshDevices();
-    const timer = setInterval(refreshDevices, 30000);
-    return () => { live = false; clearInterval(timer); };
+  const { d, load, onLogout } = p, s = d.me.settings, [code, setCode] = useState(''), [err, setErr] = useState(''), [devs, setDevs] = useState(null), [checkingDevices, setCheckingDevices] = useState(false);
+  const refreshDevices = useCallback(async () => {
+    setCheckingDevices(true);
+    try { setDevs((await api.get('/household')).devices); }
+    catch { setDevs([]); }
+    finally { setCheckingDevices(false); }
   }, []);
+  useEffect(() => { refreshDevices(); }, [refreshDevices]);
   const save = (patch) => guard(async () => { await api.put('/settings', patch); await load(); });
   const Step = ({ k, min, max }) => <div className="step"><button onClick={() => save({ [k]: Math.max(min, s[k] - 1) })}>−</button><b>{s[k]}</b><button onClick={() => save({ [k]: Math.min(max, s[k] + 1) })}>+</button></div>;
   const push = () => guard(async () => {
@@ -138,7 +138,7 @@ export function Profile(p) {
       <div className="set"><span>Orange warning<br /><small className="hint">days before expiry</small></span><Step k="warn_days" min={0} max={7} /></div>
       <div className="set"><span>Email alerts{!m.emailEnabled && <small className="hint" style={{ display: 'block' }}>Server email is not configured</small>}</span><button className={`sw${s.email_on ? ' on' : ''}`} aria-label="Email alerts" onClick={() => save({ email_on: !s.email_on })} /></div>
       <div className="set"><span>Push notifications<br /><small className="hint">Warnings on this phone</small></span><button className="add" onClick={push}>Turn on</button></div></div>
-    <div className="card"><h3 style={{ margin: '0 0 6px' }}>Indicator Unit</h3>{devs?.length ? devs.map((v) => <div className="set" key={v.id}><span>{v.code}<br /><small className="hint">firmware {v.fw} · last check-in: {v.last_seen ? timeText(v.last_seen) : 'never'}</small></span><Badge color={v.online ? 'green' : 'yellow'} flow>{v.online ? 'Online' : 'Offline'}</Badge></div>) : <p className="hint">No device linked yet.</p>}
+    <div className="card"><div className="gh"><h3 style={{ margin: '0 0 6px' }}>Indicator Unit</h3><button className="add" disabled={checkingDevices} onClick={refreshDevices}>{checkingDevices ? 'Checking…' : 'Refresh status'}</button></div>{devs?.length ? devs.map((v) => <div className="set" key={v.id}><span>{v.code}<br /><small className="hint">firmware {v.fw} · last check-in: {v.last_seen ? timeText(v.last_seen) : 'never'}</small></span><Badge color={v.online ? 'green' : 'yellow'} flow>{v.online ? 'Online' : 'Offline'}</Badge></div>) : <p className="hint">{devs === null ? 'Checking for linked devices…' : 'No device linked yet.'}</p>}
       <Err msg={err} /><form className="gf" onSubmit={link}><input required placeholder="Device code, e.g. KF-1A2B3C" aria-label="Device code" value={code} onChange={(e) => setCode(e.target.value)} /><button className="add">Link</button></form></div>
     <button className="go alt" onClick={onLogout}>Log out</button></>;
 }

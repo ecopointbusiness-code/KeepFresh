@@ -29,7 +29,14 @@ function Shell({ onLogout }) {
     }
   }, []);
   useEffect(() => { document.body.classList.add('has-nav'); return () => document.body.classList.remove('has-nav'); }, []);
-  useEffect(() => { load().catch(() => {}); const t = setInterval(() => load().catch(() => {}), 60000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load().catch(() => {}); }, [load]);
+  // Keep the dashboard current without repeatedly reloading data while the
+  // user is editing settings or using the grocery list/profile screens.
+  useEffect(() => {
+    if (tab !== 'Home') return;
+    const t = setInterval(() => load().catch(() => {}), 60000);
+    return () => clearInterval(t);
+  }, [load, tab]);
   if (!d) return <div className="auth"><div className="box"><h1>KeepFresh</h1>{loadError ? <><p className="err">{loadError}</p><button className="btn d" onClick={() => load().catch(() => {})}>Try again</button></> : <div className="empty">Loading your refrigerator…</div>}</div></div>;
 
   const removeItem = (id) => setD((current) => current ? { ...current, items: current.items.filter((item) => item.id !== id) } : current);

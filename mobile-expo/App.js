@@ -50,15 +50,10 @@ function AppContent() {
   useEffect(() => {
     if (!token || tab !== 'Profile') return;
     let active = true;
-    const pollDevices = async () => {
-      try {
-        const household = await request('/household');
-        if (active) setData(current => current ? { ...current, devices: household.devices || [] } : current);
-      } catch {}
-    };
-    pollDevices();
-    const timer = setInterval(pollDevices, 30000);
-    return () => { active = false; clearInterval(timer); };
+    request('/household').then(household => {
+      if (active) setData(current => current ? { ...current, devices: household.devices || [] } : current);
+    }).catch(() => {});
+    return () => { active = false; };
   }, [token, tab, request]);
   const registerPush = useCallback(async () => {
     if (Platform.OS === 'web' || !token || !data?.me?.settings?.push_on || pushRegistered) return;
@@ -160,7 +155,7 @@ function AppContent() {
   };
   const renderProfile = () => <>
     <Card><Text style={s.cardTitle}>{data.me.user.name}</Text><Text style={s.body}>{data.me.user.email}</Text><Text style={s.muted}>Household: {data.me.household.name}</Text><Text style={s.muted}>Invite code: {data.me.household.inviteCode}</Text></Card>
-    <Card><Text style={s.cardTitle}>Indicator Unit</Text>{data.devices?.length ? data.devices.map(d=><View key={d.id} style={s.setting}><View style={{flex:1}}><Text style={s.body}>{d.code}</Text><Text style={s.muted}>Last check-in: {d.last_seen ? new Date(d.last_seen).toLocaleTimeString() : 'never'}</Text></View><Text style={{fontWeight:'900',color:d.online?C.green2:C.orange}}>{d.online?'Online':'Offline'}</Text></View>) : <Text style={s.muted}>No device linked to this household yet.</Text>}</Card>
+    <Card><View style={s.inline}><Text style={[s.cardTitle,{flex:1}]}>Indicator Unit</Text><Button title="Refresh status" tone="light" onPress={()=>run(async()=>{const household=await request('/household');setData(current=>current?{...current,devices:household.devices||[]}:current);},'Device status updated.')}/></View>{data.devices?.length ? data.devices.map(d=><View key={d.id} style={s.setting}><View style={{flex:1}}><Text style={s.body}>{d.code}</Text><Text style={s.muted}>Last check-in: {d.last_seen ? new Date(d.last_seen).toLocaleTimeString() : 'never'}</Text></View><Text style={{fontWeight:'900',color:d.online?C.green2:C.orange}}>{d.online?'Online':'Offline'}</Text></View>) : <Text style={s.muted}>No device linked to this household yet.</Text>}</Card>
     <Card><Text style={s.cardTitle}>Freshness alerts</Text><Setting label="Email notifications" value={!!data.me.settings.email_on} onChange={(v)=>saveSettings({email_on:v})}/><Setting label="Phone push notifications" value={!!data.me.settings.push_on} onChange={(v)=>{if(v){setPushRegistered(false);saveSettings({push_on:true});}else saveSettings({push_on:false});}}/><Text style={s.muted}>Email: {data.me.emailEnabled?'configured':'not configured'} · Phone push: {pushRegistered?'enabled':data.me.pushEnabled?'waiting for device permission':'server not configured'}</Text></Card>
     <Card><Text style={s.cardTitle}>KeepFresh connections</Text><Text style={s.body}>Expiry estimates: {data.me.aiEnabled?'AI enabled':'household history and reference'}</Text><Text style={s.body}>Recipe ideas: fridge-matched, with offline suggestions available</Text></Card>
     <Button title="Log out" tone="light" onPress={logout}/>

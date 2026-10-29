@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
-import { Logo, Badge, CE, emoji, tile, whenText, guard, toast, Err } from '../common.jsx';
+import { Logo, Badge, CE, emoji, tile, whenText, guard, toast, Err, Sheet } from '../common.jsx';
 
 const AISLES = ['Meat & poultry', 'Fish & seafood', 'Vegetables & produce', 'Dairy & eggs', 'Pantry & other'];
 const AISLE = { Poultry: 0, 'Ground meat': 0, 'Pork or beef cuts': 0, 'Fish & seafood': 1, 'Leafy vegetables': 2, Dairy: 3, Eggs: 3 };
@@ -16,21 +16,58 @@ function Chips({ d, cf, setCf, go }) {
   return <div className="cats">{names.map((k) => <button key={k} className={`cat${cf === k ? ' on' : ''}`} onClick={() => { setCf(k); go && go('Fridge'); }}><span>{k === 'All' ? '✨' : emoji(k)}</span><small>{k === 'Pork or beef cuts' ? 'Pork & beef' : k === 'Leafy vegetables' ? 'Veggies' : k}</small></button>)}</div>;
 }
 function ItemCard({ it, i, load, removeItem }) {
-  const act = (outcome) => guard(async () => { await api.del(`/items/${it.id}?outcome=${outcome}`); removeItem(it.id); await load(); toast(outcome === 'discarded' ? 'Discarded and recorded.' : 'Marked as used.'); });
-  return <div className="it" style={{ animationDelay: `${i * 40}ms` }}><div className="pic" style={{ background: tile(it.category) }}>{emoji(it.category)}<Badge color={it.color}>{it.label}</Badge></div>
+  const [choice, setChoice] = useState(null), [busy, setBusy] = useState(false);
+  const finish = (outcome) => guard(async () => {
+    setBusy(true);
+    try {
+      try { await api.del(`/items/${it.id}?outcome=${outcome}`); }
+      catch (error) {
+        if (error.status !== 404) throw error;
+        removeItem(it.id);
+        setChoice(null);
+        await load();
+        toast('This item was already removed from your refrigerator.');
+        return;
+      }
+      removeItem(it.id);
+      setChoice(null);
+      await load();
+      toast('Removed from your refrigerator and recorded.');
+    } finally { setBusy(false); }
+  });
+  const snooze = () => guard(async () => {
+    setBusy(true);
+    try {
+      await api.post(`/items/${it.id}/dismiss`);
+      setChoice(null);
+      await load();
+      toast('Warning dismissed for today. It will return tomorrow if still at risk.');
+    } finally { setBusy(false); }
+  });
+  return <><div className="it" style={{ animationDelay: `${i * 40}ms` }}><div className="pic" style={{ background: tile(it.category) }}>{emoji(it.category)}<Badge color={it.color}>{it.label}</Badge></div>
     <h3>{it.name}</h3><p className="sub">{it.category} · {it.qty}</p><p className="sub" style={{ color: `var(--${{ green: 'g', yellow: 'y', orange: 'o', red: 'r' }[it.color]})` }}>{whenText(it.daysLeft)}{it.predicted ? ` · ${it.predictionSource === 'AI' ? 'AI estimate' : `${it.predictionSource} estimate`}` : ''}</p>
-    <div className="act"><button onClick={() => act('consumed')}>Used</button><button onClick={() => act('discarded')}>Discard</button></div></div>;
+    <div className="act"><button onClick={() => setChoice('used')}>Used</button><button onClick={() => setChoice('discard')}>Discard</button></div></div>
+    {choice && <Sheet onClose={() => !busy && setChoice(null)}>
+      {choice === 'used' ? <>
+        <h2>Are you sure?</h2><p>Remove <strong>{it.name}</strong> from your refrigerator and mark it as used?</p>
+        <div className="cbtn"><button className="add" disabled={busy} onClick={() => setChoice(null)}>No</button><button className="go" style={{ margin: 0 }} disabled={busy} onClick={() => finish('consumed')}>{busy ? 'Saving…' : 'Yes, mark as used'}</button></div>
+      </> : <>
+        <h2>Did you use this?</h2><p><strong>{it.name}</strong> will be removed if you did. If you did not use it, it will stay in your refrigerator and this warning will return tomorrow if it is still at risk.</p>
+        <div className="cbtn"><button className="add" disabled={busy} onClick={snooze}>{busy ? 'Saving…' : 'No, keep it'}</button><button className="go" style={{ margin: 0 }} disabled={busy} onClick={() => finish('consumed')}>{busy ? 'Saving…' : 'Yes, I used it'}</button></div>
+      </>}
+    </Sheet>}
+  </>;
 }
 function Device({ items }) {
-  const att = items.filter((i) => i.level !== 'Advisory'), w = att.some((i) => i.level === 'Critical') ? 'r' : att.length ? 'y' : 'g';
+  const att = items.filter((i) => i.level !== 'Advisory' && !i.dismissedToday), w = att.some((i) => i.level === 'Critical') ? 'r' : att.length ? 'y' : 'g';
   return <div className="dev"><div className="lights" aria-hidden="true">{['g', 'y', 'r'].map((c) => <b key={c} className={`${c}${w === c ? ' on' : ''}`} />)}</div>
-    <div className="scr"><div className="t">KeepFresh KF-1 · Indicator Unit{w === 'r' ? ' · BUZZER' : ''}</div>
+      <div className="scr"><div className="t">KeepFresh KF-1 · Indicator Unit{w === 'r' ? ' · BUZZER' : ''}</div>
       {att.length ? att.slice(0, 4).map((i) => <div key={i.id} className={i.daysLeft < 0 ? 'c' : 'w'}>{i.name} — {i.daysLeft < 0 ? 'EXPIRED' : `${i.daysLeft}d left`}</div>) : <div>All items fresh</div>}
       <div style={{ color: '#8ea05a', marginTop: 8 }}>Live from your refrigerator door</div></div></div>;
 }
 
 export function Home(p) {
-  const { d, q, setQ } = p, att = d.items.filter((i) => i.level !== 'Advisory');
+  const { d, q, setQ } = p, att = d.items.filter((i) => i.level !== 'Advisory' && !i.dismissedToday);
   return <><Top {...p} /><Search q={q} setQ={(v) => { setQ(v); p.go('Fridge'); }} />
     <div className="two"><div className="hero"><h1>Hello, {d.me.user.firstName}</h1><p>{att.length ? `${att.length} item${att.length > 1 ? 's need' : ' needs'} your attention today.` : 'Everything in your refrigerator is fresh.'}</p><button className="btn" onClick={() => p.go('Recipes')}>Cook with them</button><div className="big">🧊</div></div><Device items={d.items} /></div>
     <h2>Categories <button onClick={() => { p.setCf('All'); p.go('Fridge'); }}>View all</button></h2><Chips {...p} />

@@ -1,7 +1,7 @@
 import { all, get, run } from './db.js';
 import { levelFor, describe } from './levels.js';
 import { deliver } from './notify.js';
-import { daysLeft } from './util.js';
+import { daysLeft, today, iso } from './util.js';
 
 export const settingsOf = async (uid) => {
   let s = await get('SELECT * FROM settings WHERE user_id=?', uid);
@@ -19,7 +19,9 @@ export async function checkHousehold(hid) {
     for (const it of items) {
       const level = levelFor(daysLeft(it.expires), cfg);
       const prev = await get('SELECT level FROM alert_state WHERE user_id=? AND item_id=?', u.id, it.id);
-      if (prev?.level === level) continue;
+      const dismissal = /^dismissed:(\d{4}-\d{2}-\d{2}):/i.exec(prev?.level || '');
+      if (dismissal?.[1] === iso(today())) continue;
+      if (!dismissal && prev?.level === level) continue;
       await run('INSERT INTO alert_state (user_id,item_id,level) VALUES (?,?,?) ON CONFLICT (user_id,item_id) DO UPDATE SET level=excluded.level', u.id, it.id, level);
       if (level === 'Advisory') continue;
       await deliver(u, cfg, { level, message: describe(it, level), householdId: hid, itemId: it.id });

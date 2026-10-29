@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "332238479364",
+    "project_id": "keepfresh-c4e5b",
+    "storage_bucket": "keepfresh-c4e5b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:332238479364:android:4e40409cf0a3d2d8899551",
+        "android_client_info": {
+          "package_name": "ph.edu.eac.keepfresh"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-Vv2dnGyXvez9jXaSkT0xL1wDiFQwbeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

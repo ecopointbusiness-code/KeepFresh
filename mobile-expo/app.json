@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "KeepFresh",
+    "slug": "keepfresh",
+    "owner": "hestiajass-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/keepfresh-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ph.edu.eac.keepfresh"
+    },
+    "android": {
+      "package": "ph.edu.eac.keepfresh",
+      "adaptiveIcon": {
+        "backgroundColor": "#f8f4f0",
+        "foregroundImage": "./assets/keepfresh-icon.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#506b2e",
+          "defaultChannel": "freshness-alerts"
+        }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": true,
+          "hidden": false,
+          "style": "light"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ab9aac6b-c11d-4fbb-9eec-aa9bdcffe772"
+      }
+    }
+  }
+}

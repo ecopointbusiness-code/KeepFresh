@@ -133,7 +133,14 @@ route('DELETE', '/api/push/subscribe', 'user', async (c) => {
 /* ------------------------------------------------------------------ inventory */
 const hid = (c) => c.user.household_id;
 route('GET', '/api/catalog', 'user', () => all('SELECT category, shelf_days, emoji FROM food_catalog ORDER BY id'));
-route('GET', '/api/items', 'user', async (c) => { const cfg = await settingsOf(c.user.id); return (await all('SELECT * FROM items WHERE household_id=? ORDER BY expires', hid(c))).map((i) => decorate(i, cfg)); });
+route('GET', '/api/items', 'user', async (c) => {
+  const cfg = await settingsOf(c.user.id), todayKey = iso(today());
+  return Promise.all((await all('SELECT * FROM items WHERE household_id=? ORDER BY expires', hid(c))).map(async (i) => {
+    const state = await get('SELECT level FROM alert_state WHERE user_id=? AND item_id=?', c.user.id, i.id);
+    const dismissedToday = new RegExp(`^dismissed:${todayKey}:`, 'i').test(state?.level || '');
+    return { ...decorate(i, cfg), dismissedToday };
+  }));
+});
 route('POST', '/api/predict', 'user', async (c) => {
   limit('predict-ai:' + c.user.id, 30, 60 * 60 * 1000);
   const category = clean(c.body.category) === 'Other' ? guessCategory(clean(c.body.name)) : clean(c.body.category);
@@ -166,9 +173,27 @@ route('DELETE', '/api/items/:id', 'user', async (c) => tx(async () => {
   const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
   await removeItem(it, c.query.get('outcome') === 'discarded' ? 'discarded' : 'consumed'); return { ok: true };
 }));
+route('POST', '/api/items/:id/dismiss', 'user', async (c) => tx(async () => {
+  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c));
+  if (!it) throw new HttpError(404, 'Item not found.');
+  const cfg = await settingsOf(c.user.id), level = decorate(it, cfg).level;
+  const dismissal = `dismissed:${iso(today())}:${level}`;
+  await run('INSERT INTO alert_state (user_id,item_id,level) VALUES (?,?,?) ON CONFLICT (user_id,item_id) DO UPDATE SET level=excluded.level', c.user.id, it.id, dismissal);
+  await run('UPDATE alerts SET acked=1 WHERE user_id=? AND item_id=? AND acked=0', c.user.id, it.id);
+  return { ok: true };
+}));
 
 /* ------------------------------------------------------------------ alerts */
-route('GET', '/api/alerts', 'user', async (c) => ({ alerts: (await all('SELECT * FROM alerts WHERE user_id=? ORDER BY id DESC LIMIT 50', c.user.id)).map((a) => ({ ...a, color: COLOR[a.level] })), unread: (await get('SELECT COUNT(*) n FROM alerts WHERE user_id=? AND acked=0', c.user.id)).n }));
+route('GET', '/api/alerts', 'user', async (c) => {
+  const todayKey = iso(today()), rows = await all('SELECT * FROM alerts WHERE user_id=? ORDER BY id DESC LIMIT 50', c.user.id);
+  const alerts = [];
+  for (const a of rows) {
+    const state = a.item_id == null ? null : await get('SELECT level FROM alert_state WHERE user_id=? AND item_id=?', c.user.id, a.item_id);
+    if (new RegExp(`^dismissed:${todayKey}:`, 'i').test(state?.level || '')) continue;
+    alerts.push({ ...a, color: COLOR[a.level] });
+  }
+  return { alerts, unread: (await get('SELECT COUNT(*) n FROM alerts WHERE user_id=? AND acked=0', c.user.id)).n };
+});
 route('POST', '/api/alerts/ack-all', 'user', async (c) => { await run('UPDATE alerts SET acked=1 WHERE user_id=?', c.user.id); return { ok: true }; });
 
 /* ------------------------------------------------------------------ recipes */

@@ -99,11 +99,8 @@ function AppContent() {
   const removeUsedItem = (i) => run(async()=>{
     try { await request(`/items/${i.id}?outcome=consumed`,'DELETE'); }
     catch (e) {
-      if (e.status !== 404) throw e;
-      setData(current=>current?{...current,items:current.items.filter(item=>item.id!==i.id)}:current);
-      await refresh();
-      setNotice('This item was already removed from your refrigerator.');
-      return;
+      if (e.status === 404) await refresh();
+      throw e;
     }
     setData(current=>current?{...current,items:current.items.filter(item=>item.id!==i.id)}:current);
     await refresh();

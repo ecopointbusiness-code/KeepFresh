@@ -22,12 +22,8 @@ function ItemCard({ it, i, load, removeItem }) {
     try {
       try { await api.del(`/items/${it.id}?outcome=${outcome}`); }
       catch (error) {
-        if (error.status !== 404) throw error;
-        removeItem(it.id);
-        setChoice(null);
-        await load();
-        toast('This item was already removed from your refrigerator.');
-        return;
+        if (error.status === 404) await load();
+        throw error;
       }
       removeItem(it.id);
       setChoice(null);

@@ -159,7 +159,8 @@ route('POST', '/api/items', 'user', async (c) => {
   return decorate(await get('SELECT * FROM items WHERE id=?', id), await settingsOf(c.user.id));
 });
 route('PATCH', '/api/items/:id', 'user', async (c) => {
-  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
+  const itemId = Number(c.params.id); if (!Number.isSafeInteger(itemId) || itemId < 1) throw new HttpError(404, 'Item not found.');
+  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', itemId, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
   const b = c.body, exp = clean(b.expires) || it.expires;
   await run('UPDATE items SET name=?, qty=?, category=?, expires=?, predicted=?, prediction_source=? WHERE id=?', clean(b.name, 80) || it.name, clean(b.qty, 40) || it.qty, clean(b.category) || it.category, exp, b.expires ? 0 : it.predicted, b.expires ? 'manual' : it.prediction_source, it.id);
   await run('DELETE FROM alert_state WHERE item_id=?', it.id); await checkHousehold(hid(c));
@@ -170,11 +171,13 @@ async function removeItem(it, outcome) {
   await run('DELETE FROM items WHERE id=?', it.id);
 }
 route('DELETE', '/api/items/:id', 'user', async (c) => tx(async () => {
-  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
+  const itemId = Number(c.params.id); if (!Number.isSafeInteger(itemId) || itemId < 1) throw new HttpError(404, 'Item not found.');
+  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', itemId, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
   await removeItem(it, c.query.get('outcome') === 'discarded' ? 'discarded' : 'consumed'); return { ok: true };
 }));
 route('POST', '/api/items/:id/dismiss', 'user', async (c) => tx(async () => {
-  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c));
+  const itemId = Number(c.params.id); if (!Number.isSafeInteger(itemId) || itemId < 1) throw new HttpError(404, 'Item not found.');
+  const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', itemId, hid(c));
   if (!it) throw new HttpError(404, 'Item not found.');
   const cfg = await settingsOf(c.user.id), level = decorate(it, cfg).level;
   const dismissal = `dismissed:${iso(today())}:${level}`;

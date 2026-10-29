@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
-import { Logo, Badge, CE, emoji, tile, whenText, guard, toast, Err, Sheet } from '../common.jsx';
+import { Logo, Badge, CE, emoji, tile, whenText, timeText, guard, toast, Err, Sheet } from '../common.jsx';
 
 const AISLES = ['Meat & poultry', 'Fish & seafood', 'Vegetables & produce', 'Dairy & eggs', 'Pantry & other'];
 const AISLE = { Poultry: 0, 'Ground meat': 0, 'Pork or beef cuts': 0, 'Fish & seafood': 1, 'Leafy vegetables': 2, Dairy: 3, Eggs: 3 };

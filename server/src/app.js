@@ -56,7 +56,9 @@ async function api(req, res, url) {
     send(res, ctx.status, data);
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.message, ...e.extra });
-    console.error(e); send(res, 500, { error: 'Something went wrong.' });
+    console.error(e);
+    const quota = /RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(e?.message || ''));
+    send(res, quota ? 503 : 500, { error: quota ? 'The database has reached its current quota. Please try again after the quota resets.' : 'Something went wrong.' });
   }
 }
 

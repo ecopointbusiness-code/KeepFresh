@@ -162,10 +162,10 @@ async function removeItem(it, outcome) {
   await run('INSERT INTO consumption_logs (household_id,category,days,outcome) VALUES (?,?,?,?)', it.household_id, it.category, Math.max(1, daysBetween(it.bought, iso(today()))), outcome);
   await run('DELETE FROM items WHERE id=?', it.id);
 }
-route('DELETE', '/api/items/:id', 'user', async (c) => {
+route('DELETE', '/api/items/:id', 'user', async (c) => tx(async () => {
   const it = await get('SELECT * FROM items WHERE id=? AND household_id=?', c.params.id, hid(c)); if (!it) throw new HttpError(404, 'Item not found.');
   await removeItem(it, c.query.get('outcome') === 'discarded' ? 'discarded' : 'consumed'); return { ok: true };
-});
+}));
 
 /* ------------------------------------------------------------------ alerts */
 route('GET', '/api/alerts', 'user', async (c) => ({ alerts: (await all('SELECT * FROM alerts WHERE user_id=? ORDER BY id DESC LIMIT 50', c.user.id)).map((a) => ({ ...a, color: COLOR[a.level] })), unread: (await get('SELECT COUNT(*) n FROM alerts WHERE user_id=? AND acked=0', c.user.id)).n }));
@@ -238,7 +238,7 @@ route('POST', '/api/recipes/suggest', 'user', async (c) => {
   });
   return { generated: saved };
 });
-route('POST', '/api/recipes/:id/cook', 'user', async (c) => {
+route('POST', '/api/recipes/:id/cook', 'user', async (c) => tx(async () => {
   const recipe = await get('SELECT id FROM recipes WHERE id=? AND published=1 AND custom=1 AND (household_id IS NULL OR household_id=?)', c.params.id, hid(c));
   if (!recipe) throw new HttpError(404, 'Recipe not found.');
   const ings = await all('SELECT key FROM recipe_ings WHERE recipe_id=?', c.params.id), per = ['Poultry', 'Ground meat', 'Pork or beef cuts', 'Fish & seafood', 'Leafy vegetables'];
@@ -248,7 +248,7 @@ route('POST', '/api/recipes/:id/cook', 'user', async (c) => {
     if (it) { await removeItem(it, 'consumed'); used++; }
   }
   return { used };
-});
+}));
 
 /* ------------------------------------------------------------------ grocery */
 const RESTOCK_IDEAS = [
@@ -331,7 +331,7 @@ route('POST', '/api/household/device', 'user', async (c) => {
   await run('UPDATE devices SET household_id=? WHERE id=?', hid(c), d.id); return { ok: true };
 });
 
-route('GET', '/api/device/status', 'device', async (c) => {
+route('GET', '/api/device/status', 'device', async (c) => tx(async () => {
   const d = c.device; await run('UPDATE devices SET last_seen=? WHERE id=?', new Date().toISOString(), d.id);
   const owner = d.household_id && await get("SELECT id FROM users WHERE household_id=? AND role='user' AND active=1 ORDER BY id LIMIT 1", d.household_id);
   const cfg = owner ? await settingsOf(owner.id) : { watch_days: 3, warn_days: 1 };
@@ -354,12 +354,12 @@ route('GET', '/api/device/status', 'device', async (c) => {
   }
   const cutoff = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 19).replace('T', ' ');
   const adv = await get("SELECT message FROM announcements WHERE (audience='all' OR audience=?) AND created_at>=? ORDER BY id DESC LIMIT 1", d.household_id ? `household:${d.household_id}` : 'all', cutoff);
-  return { led: worst, buzzer: worst === 'red', count: items.length, command,
+  return { led: worst, buzzer: items.length > 0, count: items.length, command,
     household: house?.name || '', linked: !!d.household_id, code: d.code, total: all_.length,
     counts: { fresh: count('Advisory'), watch: count('Watch'), warning: count('Warning'), critical: count('Critical') },
     items: items.slice(0, 6).map((i) => ({ name: i.name, days: i.daysLeft, level: i.level, qty: i.qty })),
     tip, advisory: adv?.message || '' };
-});
+}));
 
 /* ------------------------------------------------------------------ admin (separate login, role enforced) */
 route('POST', '/api/admin/login', null, async (c) => {

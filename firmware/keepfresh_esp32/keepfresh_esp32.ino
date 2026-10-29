@@ -11,9 +11,9 @@
     TFT (ILI9488)         MOSI 23, SCLK 18, CS 15, DC 2, RST 4, MISO 19 (optional), VCC/LED 3V3, GND
     BOOT button (already on the board, GPIO 0): press once to silence the buzzer for 1 hour, press again to un-mute.
 
-  The screen shows: status banner, counts (fresh / use soon / use today / expired), the items that need
-  attention with their exact days left, a cooking tip, admin advisories, Wi-Fi strength, clock, and
-  the device code when the unit is not linked to a household yet.
+  With no attention items, the screen shows an animated all-clear home screen. When items need attention,
+  it shows a color-coded warning card and pulses the buzzer for one minute, then returns to the home screen.
+  The warning repeats every 30 minutes until the items are marked used/discarded in KeepFresh.
 */
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -28,7 +28,7 @@ const char* WIFI_PASS  = "YOUR_PASSWORD";
 const char* SERVER     = "https://your-keepfresh-domain.com";   // no trailing slash. http://192.168.x.x:3000 also works
 const char* DEVICE_KEY = "PASTE_API_KEY_FROM_ADMIN_PORTAL";
 const long  GMT_OFFSET = 8 * 3600;                              // Philippines (UTC+8)
-const unsigned long POLL_MS = 30000;
+const unsigned long POLL_MS = 60000;
 // --------------------
 
 const int PIN_G = 25, PIN_Y = 26, PIN_R = 27, PIN_BUZ = 33, PIN_MUTE = 0;
@@ -44,17 +44,19 @@ TFT_eSPI tft = TFT_eSPI();
 struct Row { String name, level, qty; int days; };
 Row rows[6]; int nRows = 0;
 int cFresh = 0, cWatch = 0, cWarn = 0, cCrit = 0, nAttention = 0, nTotal = 0;
-String led = "green", household = "", tip = "", advisory = "", devCode = "", lastSig = "";
+String led = "green", household = "", tip = "", advisory = "", devCode = "";
 bool linked = true, serverOk = false, haveData = false, buzzerFlag = false;
 
-unsigned long lastPoll = 0, lastOkMs = 0, lastAlarmMs = 0, muteUntil = 0, lastFooterMs = 0, lastHeaderMs = 0;
+unsigned long lastPoll = 0, lastOkMs = 0, muteUntil = 0, lastHeaderMs = 0;
 bool muted = false;
-String lastFooter = "";
+bool warningActive = false, alertVisible = false;
+String warningSignature = "";
+unsigned long alertUntil = 0, nextAlertAt = 0, lastAlertPage = 0, lastHomeAnimation = 0;
+int alertPage = 0, homeFrame = 0;
 
 // ---------- outputs ----------
 void leds(bool g, bool y, bool r) { digitalWrite(PIN_G, g); digitalWrite(PIN_Y, y); digitalWrite(PIN_R, r); }
 void beep(int times, int ms = 150) { for (int i = 0; i < times; i++) { digitalWrite(PIN_BUZ, HIGH); delay(ms); digitalWrite(PIN_BUZ, LOW); delay(ms); } }
-void soundAlarm(int times, int ms) { if (!muted) beep(times, ms); }
 
 // ---------- drawing helpers ----------
 void text(int x, int y, int size, uint16_t color, const String& s, uint16_t bg = BG) { tft.setTextSize(size); tft.setTextColor(color, bg); tft.setCursor(x, y); tft.print(s); }
@@ -84,57 +86,74 @@ void drawHeader() {
   lastHeaderMs = millis();
 }
 
-void drawBanner() {
-  uint16_t col = led == "red" ? RED : led == "yellow" ? GOLD : GREEN, fg = led == "yellow" ? BG : CREAM;
-  String big = led == "red" ? (cCrit > 0 ? "DISCARD NOW" : "USE TODAY") : led == "yellow" ? "USE SOON" : "ALL FRESH";
-  String sub = led == "green" ? (nTotal ? String(nTotal) + " items in your fridge" : "Fridge is empty") : String(nAttention) + (nAttention == 1 ? " item needs attention" : " items need attention");
-  tft.fillRoundRect(8, 40, tft.width() - 16, 50, 10, col);
-  text(18, 46, 3, fg, big, col); textRight(tft.width() - 18, 52, 1, fg, sub, col);
-  textRight(tft.width() - 18, 68, 1, fg, led == "red" ? "Check the list below" : led == "yellow" ? "Cook these first" : "Keep it up!", col);
-}
-
-void chip(int x, int w, uint16_t col, int n, const char* label) {
-  tft.fillRoundRect(x, 96, w, 36, 8, PANEL); tft.fillRect(x, 96 + 6, 4, 24, col);
-  text(x + 12, 100, 3, n ? col : MUTED, String(n), PANEL); text(x + 12, 124, 1, MUTED, label, PANEL);
-}
-void drawCounts() {
-  int w = (tft.width() - 16 - 3 * 6) / 4, x = 8;
-  chip(x, w, GREEN, cFresh, "FRESH"); x += w + 6; chip(x, w, GOLD, cWatch, "USE SOON"); x += w + 6; chip(x, w, ORANGE, cWarn, "USE TODAY"); x += w + 6; chip(x, w, RED, cCrit, "EXPIRED");
-}
-
-void drawItems() {
-  tft.fillRect(0, 138, tft.width(), 128, BG);
-  if (nRows == 0) { textCenter(tft.width() / 2, 172, 2, OLIVE, "Nothing is about to expire", BG); textCenter(tft.width() / 2, 200, 1, MUTED, "Great job keeping your food fresh!", BG); return; }
-  int show = nRows > 4 ? 4 : nRows;
-  for (int i = 0; i < show; i++) {
-    int y = 138 + i * 32; uint16_t col = levelColor(rows[i].level);
-    tft.fillRoundRect(8, y, tft.width() - 16, 28, 6, PANEL); tft.fillRoundRect(8, y, 8, 28, 3, col);
-    text(24, y + 6, 2, CREAM, clip(rows[i].name, 16), PANEL);
-    if (rows[i].qty.length() && rows[i].qty != "1") text(24 + 12 * 16 + 8, y + 11, 1, MUTED, "x" + clip(rows[i].qty, 6), PANEL);
-    textRight(tft.width() - 18, y + 6, 2, col, daysText(rows[i].days), PANEL);
+void drawIdleHome(bool force = false) {
+  int cx = tft.width() / 2;
+  if (force) {
+    tft.fillScreen(BG); drawHeader();
+    tft.fillRoundRect(14, 48, tft.width() - 28, 62, 12, PANEL);
+    textCenter(cx, 58, 2, OLIVE, "YOUR FRIDGE", PANEL);
+    textCenter(cx, 84, 2, CREAM, "ALL CLEAR", PANEL);
+    textCenter(cx, 119, 1, MUTED, nTotal ? String(nTotal) + " foods staying fresh" : "Your fridge is ready", BG);
+    tft.fillRoundRect(42, 267, tft.width() - 84, 34, 9, PANEL);
+    textCenter(cx, 277, 1, MUTED, serverOk ? "Warnings will appear here" : "Offline - showing last status", PANEL);
   }
-  if (nAttention > show) textRight(tft.width() - 12, 266 - 10, 1, MUTED, "+" + String(nAttention - show) + " more in the app", BG);
+  // Redraw only the illustration area for a soft, low-flicker idle animation.
+  tft.fillRect(cx - 105, 137, 210, 122, BG);
+  int bounce = (homeFrame % 2) ? 4 : 0;
+  tft.fillRoundRect(cx - 65, 190 + bounce, 130, 55, 8, BROWN);
+  tft.drawRoundRect(cx - 65, 190 + bounce, 130, 55, 8, GOLD);
+  for (int y = 203; y <= 233; y += 15) tft.drawLine(cx - 58, y + bounce, cx + 58, y + bounce, GOLD);
+  tft.fillCircle(cx - 34, 179 - bounce, 18, GREEN);
+  tft.fillCircle(cx, 169 + bounce, 22, ORANGE);
+  tft.fillCircle(cx + 35, 180 - bounce, 17, RED);
+  int sparkleX = cx - 82 + ((homeFrame * 23) % 165), sparkleY = 156 + ((homeFrame * 13) % 27);
+  tft.fillCircle(sparkleX, sparkleY, 4, CREAM);
+  homeFrame++;
 }
 
-String footerText(uint16_t& bgc, uint16_t& fg) {
-  String pages[4]; uint16_t pb[4], pf[4]; int n = 0;
-  if (!serverOk && haveData) { pages[n] = "Server offline - showing last data"; pb[n] = RED; pf[n] = CREAM; n++; }
-  if (advisory.length()) { pages[n] = "ADVISORY: " + advisory; pb[n] = ORANGE; pf[n] = BG; n++; }
-  if (tip.length()) { pages[n] = "Cook: " + tip; pb[n] = PANEL; pf[n] = OLIVE; n++; }
-  unsigned long ago = (millis() - lastOkMs) / 1000; String upd = lastOkMs ? (ago < 90 ? String(ago) + "s ago" : String(ago / 60) + "m ago") : "never";
-  pages[n] = String(nTotal) + " items | updated " + upd + (muted ? " | muted" : ""); pb[n] = PANEL; pf[n] = MUTED; n++;
-  int idx = (millis() / 5000) % n; bgc = pb[idx]; fg = pf[idx]; return pages[idx];
-}
-void drawFooter(bool force = false) {
-  uint16_t bgc, fg; String s = footerText(bgc, fg);
-  if (!force && s == lastFooter) return;
-  lastFooter = s; lastFooterMs = millis();
-  tft.fillRoundRect(8, 276, tft.width() - 16, 36, 8, bgc);
-  if (s.length() > 38) { text(16, 281, 1, fg, clip(s, 76).substring(0, 76), bgc); if (s.length() > 76) text(16, 296, 1, fg, s.substring(76, 152), bgc); }
-  else text(16, 286, 2, fg, s, bgc);
+void drawWarningScreen() {
+  if (nRows <= 0) return;
+  alertPage %= nRows;
+  const Row& r = rows[alertPage];
+  uint16_t col = levelColor(r.level);
+  tft.fillScreen(CREAM);
+  tft.fillRoundRect(8, 8, tft.width() - 16, tft.height() - 16, 16, PANEL);
+  tft.fillRoundRect(8, 8, tft.width() - 16, 52, 16, col);
+  String title = r.level == "Critical" ? "FOOD EXPIRED" : r.level == "Warning" ? "USE THIS TODAY" : "USE THIS SOON";
+  textCenter(tft.width() / 2, 23, 2, CREAM, title, col);
+  tft.fillCircle(tft.width() / 2, 104, 31, col);
+  textCenter(tft.width() / 2, 81, 4, CREAM, "!", col);
+  textCenter(tft.width() / 2, 148, 3, CREAM, clip(r.name, 22), PANEL);
+  textCenter(tft.width() / 2, 183, 2, col, daysText(r.days), PANEL);
+  if (r.qty.length()) textCenter(tft.width() / 2, 213, 1, MUTED, "Quantity: " + clip(r.qty, 28), PANEL);
+  tft.fillRoundRect(22, 245, tft.width() - 44, 44, 9, col);
+  textCenter(tft.width() / 2, 251, 1, CREAM, "Mark used or discard in KeepFresh", col);
+  textCenter(tft.width() / 2, 270, 1, CREAM, "Item " + String(alertPage + 1) + " of " + String(nRows) + (muted ? "  |  BUZZER MUTED" : ""), col);
+  lastAlertPage = millis();
 }
 
-void drawDashboard() { tft.fillScreen(BG); drawHeader(); drawBanner(); drawCounts(); drawItems(); drawFooter(true); }
+void startAlertWindow() {
+  unsigned long now = millis();
+  alertVisible = true; alertUntil = now + 60000UL; nextAlertAt = now + REPEAT_ALARM_MS;
+  alertPage = 0; drawWarningScreen();
+}
+
+void driveWarningBuzzer() {
+  if (!warningActive || !alertVisible || muted) { digitalWrite(PIN_BUZ, LOW); return; }
+  unsigned long phase = millis() % 4000UL;
+  bool on = phase < 180UL || (phase >= 420UL && phase < 600UL);
+  digitalWrite(PIN_BUZ, on ? HIGH : LOW);
+}
+
+void serviceWarningDisplay() {
+  unsigned long now = millis();
+  if (!warningActive) { if (linked && now - lastHomeAnimation >= 900UL) { lastHomeAnimation = now; drawIdleHome(); } return; }
+  if (alertVisible && (int32_t)(now - alertUntil) >= 0) {
+    alertVisible = false; digitalWrite(PIN_BUZ, LOW); drawIdleHome(true);
+  } else if (!alertVisible && (int32_t)(now - nextAlertAt) >= 0) startAlertWindow();
+  if (alertVisible && nRows > 1 && now - lastAlertPage >= 10000UL) { alertPage = (alertPage + 1) % nRows; drawWarningScreen(); }
+  driveWarningBuzzer();
+}
 
 void drawUnlinked() {
   tft.fillScreen(BG); drawHeader();
@@ -174,7 +193,7 @@ void applyStatus(JsonDocument& doc) {
 }
 
 void poll() {
-  if (WiFi.status() != WL_CONNECTED) { serverOk = false; connectWifi(); if (haveData) drawDashboard(); return; }
+  if (WiFi.status() != WL_CONNECTED) { serverOk = false; connectWifi(); if (!haveData) splash("Wi-Fi reconnecting..."); return; }
   WiFiClientSecure secure; WiFiClient plain; HTTPClient http;
   secure.setInsecure();   // for production, pin your server certificate with secure.setCACert(...)
   String url = String(SERVER) + "/api/device/status";
@@ -182,13 +201,14 @@ void poll() {
   if (!began) { serverOk = false; return; }
   http.setTimeout(8000); http.addHeader("x-device-key", DEVICE_KEY);
   int code = http.GET();
-  if (code != 200) { http.end(); bool was = serverOk; serverOk = false; if (was || !haveData) { if (haveData) drawFooter(true); else splash("Server error " + String(code)); } return; }
+  if (code != 200) { http.end(); serverOk = false; if (!haveData) splash("Server error " + String(code)); return; }
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, http.getString());
   http.end();
   if (err) { serverOk = false; return; }
 
-  bool cameBack = !serverOk; serverOk = true; haveData = true; lastOkMs = millis();
+  bool cameBack = !serverOk;
+  serverOk = true; haveData = true; lastOkMs = millis();
   String cmd = doc["command"].isNull() ? "" : doc["command"].as<String>();
   if (cmd == "restart") ESP.restart();
   if (cmd == "test") { leds(1, 0, 0); delay(400); leds(0, 1, 0); delay(400); leds(0, 0, 1); delay(400); }
@@ -196,14 +216,23 @@ void poll() {
 
   applyStatus(doc);
   leds(led == "green", led == "yellow", led == "red");
-  String sig; serializeJson(doc, sig);
-  if (sig != lastSig || cameBack) {
-    bool newDanger = (sig != lastSig);
-    lastSig = sig;
-    if (!linked) drawUnlinked(); else drawDashboard();
-    if (buzzerFlag && newDanger) { soundAlarm(2, 200); lastAlarmMs = millis(); }
+  String sig;
+  for (int i = 0; i < nRows; i++) sig += rows[i].name + ":" + rows[i].level + ":" + String(rows[i].days) + ";";
+  bool wasWarning = warningActive;
+  warningActive = buzzerFlag && linked;
+  if (!linked) {
+    warningActive = false; alertVisible = false; digitalWrite(PIN_BUZ, LOW); drawUnlinked();
+  } else if (!warningActive) {
+    bool cleared = wasWarning || warningSignature.length();
+    warningSignature = ""; alertVisible = false; nextAlertAt = 0; digitalWrite(PIN_BUZ, LOW);
+    if (cleared || cameBack) drawIdleHome(true);
+  } else if (!wasWarning) {
+    warningSignature = sig; startAlertWindow();
+  } else if (sig != warningSignature) {
+    warningSignature = sig;
+    if (alertVisible) { alertPage = 0; drawWarningScreen(); }
   }
-  if (buzzerFlag && millis() - lastAlarmMs > REPEAT_ALARM_MS) { soundAlarm(2, 200); lastAlarmMs = millis(); }   // gentle reminder every 30 minutes
+  serviceWarningDisplay();
 }
 
 // BOOT button: mute the buzzer for one hour, press again to un-mute
@@ -212,10 +241,14 @@ void checkButton() {
   bool down = digitalRead(PIN_MUTE) == LOW;
   if (down && !was && millis() - t > 300) {
     t = millis(); muted = !muted; muteUntil = muted ? millis() + MUTE_MS : 0;
-    if (!muted) beep(1, 80); drawHeader(); lastFooter = "";
+    if (!muted) beep(1, 80);
+    if (warningActive && alertVisible) drawWarningScreen(); else if (linked && haveData) drawIdleHome(true); else if (!linked) drawUnlinked();
   }
   was = down;
-  if (muted && millis() > muteUntil) { muted = false; drawHeader(); }
+  if (muted && (int32_t)(millis() - muteUntil) >= 0) {
+    muted = false;
+    if (warningActive && alertVisible) drawWarningScreen(); else if (linked && haveData) drawIdleHome(true); else if (!linked) drawUnlinked();
+  }
 }
 
 void setup() {
@@ -224,14 +257,13 @@ void setup() {
   tft.init(); tft.setRotation(1); tft.fillScreen(BG);
   splash("Starting...");
   connectWifi(); poll();
+  if (haveData && linked && !warningActive) drawIdleHome(true);
 }
 
 void loop() {
   checkButton();
   if (millis() - lastPoll > POLL_MS) { lastPoll = millis(); poll(); }
-  if (haveData && linked) {
-    if (millis() - lastFooterMs > 1000) drawFooter();                 // rotates tip / advisory / "updated Ns ago"
-    if (millis() - lastHeaderMs > 30000) drawHeader();                // clock and Wi-Fi strength
-  }
+  serviceWarningDisplay();
+  if (haveData && linked && !warningActive && millis() - lastHeaderMs > 30000UL) drawIdleHome(true);
   delay(40);
 }

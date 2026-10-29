@@ -16,16 +16,24 @@ export default function App() {
 
 function Shell({ onLogout }) {
   const [d, setD] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [tab, setTab] = useState('Home'), [cf, setCf] = useState('All'), [q, setQ] = useState(''), [sheet, setSheet] = useState(null), [rsub, setRsub] = useState('Recipes');
   const load = useCallback(async () => {
-    const [me, items, al, catalog, recipes, grocery] = await Promise.all([api.get('/me'), api.get('/items'), api.get('/alerts'), api.get('/catalog'), api.get('/recipes'), api.get('/grocery')]);
-    setD({ me, items, alerts: al.alerts, unread: al.unread, catalog, recipes, grocery });
+    try {
+      const [me, items, al, catalog, recipes, grocery] = await Promise.all([api.get('/me'), api.get('/items'), api.get('/alerts'), api.get('/catalog'), api.get('/recipes'), api.get('/grocery')]);
+      setD({ me, items, alerts: al.alerts, unread: al.unread, catalog, recipes, grocery });
+      setLoadError('');
+    } catch (e) {
+      setLoadError(e.message || 'The server could not load your refrigerator.');
+      throw e;
+    }
   }, []);
   useEffect(() => { document.body.classList.add('has-nav'); return () => document.body.classList.remove('has-nav'); }, []);
   useEffect(() => { load().catch(() => {}); const t = setInterval(() => load().catch(() => {}), 60000); return () => clearInterval(t); }, [load]);
-  if (!d) return <div className="auth"><div className="empty">Loading your refrigerator…</div></div>;
+  if (!d) return <div className="auth"><div className="box"><h1>KeepFresh</h1>{loadError ? <><p className="err">{loadError}</p><button className="btn d" onClick={() => load().catch(() => {})}>Try again</button></> : <div className="empty">Loading your refrigerator…</div>}</div></div>;
 
-  const ctx = { d, load, q, setQ, cf, setCf, go: setTab, open: setSheet, rsub, setRsub, onLogout };
+  const removeItem = (id) => setD((current) => current ? { ...current, items: current.items.filter((item) => item.id !== id) } : current);
+  const ctx = { d, load, removeItem, q, setQ, cf, setCf, go: setTab, open: setSheet, rsub, setRsub, onLogout };
   const close = () => setSheet(null);
   const Page = { Home, Fridge, Recipes, Profile }[tab];
   return (

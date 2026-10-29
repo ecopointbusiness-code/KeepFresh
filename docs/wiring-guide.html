@@ -100,13 +100,13 @@ ol li,ul li{margin:5px 0}@media print{body{background:#fff}.wrap{padding:0}h2{br
 
 <h2>5b. What the screen shows</h2>
 <div class="card ok"><ul>
-<li><b>Status banner:</b> ALL FRESH (green), USE SOON (yellow), USE TODAY or DISCARD NOW (red), with how many items need attention.</li>
-<li><b>Four counters:</b> Fresh, Use soon, Use today, Expired.</li>
-<li><b>Items that need attention:</b> the exact product name, quantity, and days left (for example <i>Chicken breast: TOMORROW</i> or <i>Milk: EXPIRED 2d</i>), most urgent first.</li>
-<li><b>Bottom bar, rotating every 5 seconds:</b> a cooking tip that uses the item about to spoil, any advisory sent by the admin, and total items with &ldquo;updated Ns ago&rdquo;. It turns red if the server cannot be reached.</li>
+<li><b>Warning screen:</b> when any item needs attention, a full-screen color-coded card shows its name, status, and time remaining. The buzzer pulses during the alert.</li>
+<li><b>Alert timing:</b> the warning screen and buzzer stay active for 1 minute, then the animated home screen returns. The alert repeats every 30 minutes while attention items remain.</li>
+<li><b>Clear the warning:</b> mark the item as used or discard it in the app or website. The unit stops alerting after its next server check (about 1 minute).</li>
+<li><b>Home screen:</b> when there are no attention items, a calm animated KeepFresh screen shows the fridge is clear.</li>
 <li><b>Top bar:</b> household name, clock, and Wi-Fi strength.</li>
 <li><b>Not linked yet:</b> the screen shows the device code and how to link it in the app.</li>
-<li><b>BOOT button</b> (on the ESP32 board, no wiring): press once to mute the buzzer for 1 hour, press again to un-mute. If something stays critical, the buzzer reminds you every 30 minutes unless muted.</li></ul></div>
+<li><b>BOOT button</b> (on the ESP32 board, no wiring): press once to mute buzzer audio for 1 hour, press again to un-mute. The visual warning schedule continues.</li></ul></div>
 <h2>6. Troubleshooting</h2>
 <table><tr><th>Problem</th><th>Check</th></tr>
 <tr><td>Screen stays white</td><td>RST and CS wires, <code>ILI9488_DRIVER</code> enabled, backlight LED pin on 3V3, <code>User_Setup.h</code> saved in the correct TFT_eSPI folder</td></tr>

@@ -15,8 +15,8 @@ function Chips({ d, cf, setCf, go }) {
   const names = ['All', ...d.catalog.map((c) => c.category)];
   return <div className="cats">{names.map((k) => <button key={k} className={`cat${cf === k ? ' on' : ''}`} onClick={() => { setCf(k); go && go('Fridge'); }}><span>{k === 'All' ? '✨' : emoji(k)}</span><small>{k === 'Pork or beef cuts' ? 'Pork & beef' : k === 'Leafy vegetables' ? 'Veggies' : k}</small></button>)}</div>;
 }
-function ItemCard({ it, i, load }) {
-  const act = (outcome) => guard(async () => { await api.del(`/items/${it.id}?outcome=${outcome}`); await load(); toast(outcome === 'discarded' ? 'Discarded and recorded.' : 'Marked as used.'); });
+function ItemCard({ it, i, load, removeItem }) {
+  const act = (outcome) => guard(async () => { await api.del(`/items/${it.id}?outcome=${outcome}`); removeItem(it.id); await load(); toast(outcome === 'discarded' ? 'Discarded and recorded.' : 'Marked as used.'); });
   return <div className="it" style={{ animationDelay: `${i * 40}ms` }}><div className="pic" style={{ background: tile(it.category) }}>{emoji(it.category)}<Badge color={it.color}>{it.label}</Badge></div>
     <h3>{it.name}</h3><p className="sub">{it.category} · {it.qty}</p><p className="sub" style={{ color: `var(--${{ green: 'g', yellow: 'y', orange: 'o', red: 'r' }[it.color]})` }}>{whenText(it.daysLeft)}{it.predicted ? ` · ${it.predictionSource === 'AI' ? 'AI estimate' : `${it.predictionSource} estimate`}` : ''}</p>
     <div className="act"><button onClick={() => act('consumed')}>Used</button><button onClick={() => act('discarded')}>Discard</button></div></div>;
@@ -34,7 +34,7 @@ export function Home(p) {
   return <><Top {...p} /><Search q={q} setQ={(v) => { setQ(v); p.go('Fridge'); }} />
     <div className="two"><div className="hero"><h1>Hello, {d.me.user.firstName}</h1><p>{att.length ? `${att.length} item${att.length > 1 ? 's need' : ' needs'} your attention today.` : 'Everything in your refrigerator is fresh.'}</p><button className="btn" onClick={() => p.go('Recipes')}>Cook with them</button><div className="big">🧊</div></div><Device items={d.items} /></div>
     <h2>Categories <button onClick={() => { p.setCf('All'); p.go('Fridge'); }}>View all</button></h2><Chips {...p} />
-    <h2>Use these first</h2>{att.length ? <div className="cards">{att.map((it, i) => <ItemCard key={it.id} it={it} i={i} load={p.load} />)}</div> : <div className="card empty">Nothing is about to spoil. Nice work!</div>}
+    <h2>Use these first</h2>{att.length ? <div className="cards">{att.map((it, i) => <ItemCard key={it.id} it={it} i={i} load={p.load} removeItem={p.removeItem} />)}</div> : <div className="card empty">Nothing is about to spoil. Nice work!</div>}
     <h2>Recent alerts <button onClick={() => p.open({ type: 'alerts' })}>See all</button></h2>
     <div className="card">{d.alerts.slice(0, 3).map((a) => <div className="al" key={a.id}><Badge color={a.color} flow>{a.level}</Badge><div>{a.message}</div></div>)}{!d.alerts.length && <div className="empty">No alerts yet.</div>}</div></>;
 }
@@ -42,7 +42,7 @@ export function Home(p) {
 export function Fridge(p) {
   const { d, q, setQ, cf } = p, l = d.items.filter((i) => (cf === 'All' || i.category === cf) && i.name.toLowerCase().includes(q.toLowerCase()));
   return <><Top {...p} /><Search q={q} setQ={setQ} /><Chips {...p} /><h2>My refrigerator <small className="hint">{l.length} items</small></h2>
-    {l.length ? <div className="cards">{l.map((it, i) => <ItemCard key={it.id} it={it} i={i} load={p.load} />)}</div> : <div className="card empty">No items here yet. Tap + to add groceries.</div>}</>;
+    {l.length ? <div className="cards">{l.map((it, i) => <ItemCard key={it.id} it={it} i={i} load={p.load} removeItem={p.removeItem} />)}</div> : <div className="card empty">No items here yet. Tap + to add groceries.</div>}</>;
 }
 
 export function Recipes(p) {

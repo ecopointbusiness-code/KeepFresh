@@ -30,6 +30,8 @@ Run those commands from the extracted project root in VS Code's PowerShell termi
 
 Open `http://localhost:3000` for the customer PWA and `/admin` for the separate admin portal. Local-only default admin: `admin@keepfresh.local` / `Keepfresh@2026`. Set a unique admin email and password before exposing the server. Production mode requires an `ADMIN_PASSWORD` of at least 14 characters and a stable `JWT_SECRET` of at least 32 characters.
 
+`npm start` starts a server on your own computer for local development. It is not needed to use the public site. Once deployed, Render starts the web service and keeps it available at the HTTPS URL; its free instance may sleep when idle and take a short while to wake.
+
 ## Configuration
 
 Copy `server/.env.example` to `server/.env` and fill:
@@ -47,7 +49,7 @@ Recipe suggestions work without an AI key and are matched to fresh household inv
 
 ## Publish
 
-`Dockerfile` and `render.yaml` provide a Render deployment with an `/api/health` health check. Configure the Firebase project id and service-account JSON as private environment variables in the hosting provider (or mount the key file as a secret); do not upload the key to the repository. Also set a strong admin password, JWT secret, EmailJS credentials, and public HTTPS URL. Keep HTTPS enabled so the installable PWA and browser push work. The Firestore adapter preserves the existing SQL API by loading the relevant collections into memory for queries, so it is intended for a small single-instance deployment; a larger multi-instance deployment should move the app to native Firestore queries/transactions before scaling.
+For the existing Render Web Service, use build command `npm run setup && npm run build` and start command `npm start`. Add Firebase credentials, a strong admin password, JWT secret, EmailJS credentials, and public HTTPS URL in Render's Environment settings; do not upload the service-account key to GitHub. Keep HTTPS enabled so the installable PWA and browser push work. After a successful deploy, Render starts the site automatically at its public URL. Its free instance may sleep when idle and take a short while to wake; you do not run `npm start` on your computer to keep the hosted site alive. The Firestore adapter is intended for a small single-instance deployment; a larger multi-instance deployment should move the app to native Firestore queries/transactions before scaling.
 
 ## Phone app
 
@@ -57,10 +59,12 @@ The PWA can be installed from the HTTPS website using **Install app** or **Add t
 
 Register a device under **Admin > Devices**, copy its API key into `firmware/keepfresh_esp32/keepfresh_esp32.ino`, set Wi-Fi and the HTTPS `SERVER`, install TFT_eSPI and ArduinoJson, then upload. See `docs/wiring-guide.html` for wiring and display setup.
 
+The indicator shows an animated all-clear home screen when no items need attention. When attention items exist, it displays a color-coded warning and pulses the buzzer for one minute, then returns to the home screen. It repeats every 30 minutes until the item is marked used or discarded in the website/app; the device checks for changes about once per minute. No touch input is used.
+
 
 
 
 ## Expo mobile app
 
-A native React Native client for Expo Go is in mobile-expo/. See mobile-expo/README.md for LAN testing, API URL, and development build instructions. The Expo app talks to the KeepFresh API; it does not contain Firebase secrets or database connections. The server-side API connects to Firestore using the private service-account key.
+A native React Native client is in `mobile-expo/`. The standalone APK connects to `https://keepfresh-njtq.onrender.com` and runs without `npm start` or Metro. Build it from that folder with `npx eas-cli@latest build --platform android --profile preview`. Expo Go is only a development preview and still requires `npx expo start`. The app talks to the KeepFresh API; it does not contain Firebase database credentials.
 

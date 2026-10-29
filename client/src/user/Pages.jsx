@@ -117,7 +117,7 @@ export function Profile(p) {
     let live = true;
     const refreshDevices = () => api.get('/household').then((h) => { if (live) setDevs(h.devices); }).catch(() => { if (live) setDevs([]); });
     refreshDevices();
-    const timer = setInterval(refreshDevices, 10000);
+    const timer = setInterval(refreshDevices, 30000);
     return () => { live = false; clearInterval(timer); };
   }, []);
   const save = (patch) => guard(async () => { await api.put('/settings', patch); await load(); });

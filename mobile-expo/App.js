@@ -57,7 +57,7 @@ function AppContent() {
       } catch {}
     };
     pollDevices();
-    const timer = setInterval(pollDevices, 10000);
+    const timer = setInterval(pollDevices, 30000);
     return () => { active = false; clearInterval(timer); };
   }, [token, tab, request]);
   const registerPush = useCallback(async () => {

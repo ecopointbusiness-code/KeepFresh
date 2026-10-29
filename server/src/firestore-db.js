@@ -26,6 +26,11 @@ const firestore = getFirestore(app);
 const collection = (name) => firestore.collection(`keepfresh_${name}`);
 let queue = Promise.resolve();
 const serialize = (fn) => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
+// SQL compatibility queries currently load collections into memory. Reuse
+// those snapshots briefly so frequent dashboard/device requests do not each
+// bill a fresh read of every document. Writes invalidate the affected table.
+const ROW_CACHE_MS = 15000;
+const rowCache = new Map();
 
 const splitCsv = (s) => {
   const out = []; let start = 0, depth = 0, quote = '';
@@ -40,8 +45,12 @@ function tablesIn(sql) {
 }
 
 async function fetchRows(table) {
+  const cached = rowCache.get(table);
+  if (cached && Date.now() - cached.loadedAt < ROW_CACHE_MS) return cached.rows.map((row) => ({ ...row }));
   const snap = await collection(table).get();
-  return snap.docs.map((d) => ({ ...d.data(), id: Number(d.id) }));
+  const rows = snap.docs.map((d) => ({ ...d.data(), id: Number(d.id) }));
+  rowCache.set(table, { loadedAt: Date.now(), rows });
+  return rows.map((row) => ({ ...row }));
 }
 
 async function ensureRows(ctx, names) {
@@ -86,6 +95,7 @@ async function commit(ctx) {
     }
     await batch.commit();
   }
+  for (const table of ctx.changed) rowCache.delete(table);
 }
 
 function cleanRow(row) { return Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined)); }

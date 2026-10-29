@@ -28,8 +28,9 @@ const char* WIFI_PASS  = "YOUR_PASSWORD";
 const char* SERVER     = "https://keepfresh-njtq.onrender.com"; // production API origin; no trailing slash
 const char* DEVICE_KEY = "PASTE_API_KEY_FROM_ADMIN_PORTAL";
 const long  GMT_OFFSET = 8 * 3600;                              // Philippines (UTC+8)
-const unsigned long POLL_MS = 5000; // Poll often so new warnings appear within a few seconds.
+const unsigned long POLL_MS = 60000;
 // --------------------
+
 
 const int PIN_G = 25, PIN_Y = 26, PIN_R = 27, PIN_BUZ = 33, PIN_MUTE = 0;
 const unsigned long MUTE_MS = 3600000UL, REPEAT_ALARM_MS = 1800000UL;

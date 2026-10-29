@@ -78,7 +78,7 @@ function NewAdmin({ close }) {
 
 function Devices({ open }) {
   const [devs, load] = useLoad('/admin/devices');
-  useEffect(() => { const timer = setInterval(load, 10000); return () => clearInterval(timer); }, [load]);
+  useEffect(() => { const timer = setInterval(load, 30000); return () => clearInterval(timer); }, [load]);
   const cmd = (d, c) => guard(async () => { await api.post(`/admin/devices/${d.id}/command`, { cmd: c }); toast(`${c === 'test' ? 'Light test' : c === 'buzz' ? 'Buzzer test' : 'Restart'} queued. The unit runs it on its next check-in.`); await load(); });
   const del = (d) => confirm(`Remove ${d.code}?`) && guard(async () => { await api.del(`/admin/devices/${d.id}`); await load(); });
   return <><button className="go" style={{ margin: '0 0 12px' }} onClick={() => open({ render: (c) => <NewDevice close={c} done={load} /> })}>+ Register device</button>
